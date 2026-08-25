@@ -7,8 +7,11 @@ import android.os.Build
 import android.os.Bundle
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebChromeClient
+import android.webkit.WebSettings
 import android.net.Uri
 import android.content.Intent
+import android.view.View
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
@@ -663,7 +666,7 @@ fun GeoTrackApp() {
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(260.dp)
+                                .height(280.dp)
                         ) {
                             val validCoords = searchResults.mapNotNull { it.location }
                             val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else currentLatitude
@@ -678,34 +681,57 @@ fun GeoTrackApp() {
 
                             val polylineCoords = validCoords.joinToString(",") { "[${it.latitude}, ${it.longitude}]" }
                             val polylineJs = if (validCoords.size > 1) {
-                                "var polyline = L.polyline([$polylineCoords], {color: '#6750A4', weight: 4, opacity: 0.8}).addTo(map); map.fitBounds(polyline.getBounds().pad(0.2));"
+                                "var polyline = L.polyline([$polylineCoords], {color: '#6750A4', weight: 4, opacity: 0.85}).addTo(map); try { map.fitBounds(polyline.getBounds().pad(0.2)); } catch(e){}"
                             } else if (validCoords.size == 1) {
                                 "map.setView([${validCoords[0].latitude}, ${validCoords[0].longitude}], 15);"
                             } else {
-                                "L.marker([$currentLatitude, $currentLongitude]).addTo(map).bindPopup('目前 GPS 位置').openPopup(); map.setView([$currentLatitude, $currentLongitude], 14);"
+                                "L.marker([$currentLatitude, $currentLongitude]).addTo(map).bindPopup('<b>目前 GPS 位置</b><br/>$currentLatitude, $currentLongitude').openPopup(); map.setView([$currentLatitude, $currentLongitude], 14);"
                             }
 
                             val htmlContent = """
                                 <!DOCTYPE html>
                                 <html>
                                 <head>
-                                    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-                                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-                                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                                    <meta charset="utf-8">
+                                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                                    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
+                                    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
                                     <style>
-                                        html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
+                                        html, body { width: 100%; height: 100%; margin: 0; padding: 0; background: #e9e5f3; overflow: hidden; }
+                                        #map { width: 100vw; height: 100vh; min-height: 280px; }
+                                        .leaflet-container { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; }
                                     </style>
                                 </head>
                                 <body>
                                     <div id="map"></div>
                                     <script>
-                                        var map = L.map('map', { zoomControl: true }).setView([$centerLat, $centerLng], 14);
-                                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                                            maxZoom: 19,
-                                            attribution: '© OpenStreetMap'
-                                        }).addTo(map);
-                                        $markersJs
-                                        $polylineJs
+                                        try {
+                                            var map = L.map('map', { zoomControl: true, attributionControl: false }).setView([$centerLat, $centerLng], 14);
+                                            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                                maxZoom: 19,
+                                                subdomains: ['a','b','c']
+                                            }).addTo(map);
+                                            
+                                            $markersJs
+                                            $polylineJs
+
+                                            // 關鍵修正：解決 Samsung Galaxy / Android 14+ WebView 初始化 0px 尺寸問題
+                                            function fixMapSize() {
+                                                if (map) {
+                                                    map.invalidateSize(true);
+                                                }
+                                            }
+                                            map.whenReady(function() {
+                                                fixMapSize();
+                                                setTimeout(fixMapSize, 100);
+                                                setTimeout(fixMapSize, 300);
+                                                setTimeout(fixMapSize, 800);
+                                            });
+                                            window.addEventListener('resize', fixMapSize);
+                                            window.addEventListener('load', fixMapSize);
+                                        } catch (err) {
+                                            console.error("Map init error: " + err);
+                                        }
                                     </script>
                                 </body>
                                 </html>
@@ -714,14 +740,23 @@ fun GeoTrackApp() {
                             AndroidView(
                                 factory = { ctx ->
                                     WebView(ctx).apply {
-                                        settings.javaScriptEnabled = true
-                                        settings.domStorageEnabled = true
+                                        setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                                        settings.apply {
+                                            javaScriptEnabled = true
+                                            domStorageEnabled = true
+                                            databaseEnabled = true
+                                            useWideViewPort = true
+                                            loadWithOverviewMode = true
+                                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                                            cacheMode = WebSettings.LOAD_DEFAULT
+                                        }
                                         webViewClient = WebViewClient()
-                                        loadDataWithBaseURL("https://openstreetmap.org", htmlContent, "text/html", "UTF-8", null)
+                                        webChromeClient = WebChromeClient()
+                                        loadDataWithBaseURL("https://tile.openstreetmap.org", htmlContent, "text/html", "UTF-8", null)
                                     }
                                 },
                                 update = { webView ->
-                                    webView.loadDataWithBaseURL("https://openstreetmap.org", htmlContent, "text/html", "UTF-8", null)
+                                    webView.loadDataWithBaseURL("https://tile.openstreetmap.org", htmlContent, "text/html", "UTF-8", null)
                                 },
                                 modifier = Modifier.fillMaxSize()
                             )
