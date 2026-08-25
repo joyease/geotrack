@@ -30,7 +30,6 @@ android {
             )
         }
         debug {
-            applicationIdSuffix = ""
             isDebuggable = true
         }
     }
@@ -50,11 +49,6 @@ android {
 
     composeOptions {
         kotlinCompilerExtensionVersion = "1.5.11"
-    }
-
-    lint {
-        abortOnError = false
-        checkReleaseBuilds = false
     }
 
     packaging {
