@@ -11,6 +11,9 @@ import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.ConsoleMessage
 import android.webkit.SslErrorHandler
+import android.webkit.WebResourceRequest
+import android.webkit.WebResourceError
+import android.webkit.WebResourceResponse
 import android.net.http.SslError
 import android.util.Log
 import android.net.Uri
@@ -1056,9 +1059,21 @@ fun GeoTrackApp() {
                                 <head>
                                     <meta charset="utf-8">
                                     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
                                     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-                                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+                                    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
+                                    
+                                    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+                                    <script>
+                                        if (typeof L === 'undefined') {
+                                            document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\\/script>');
+                                        }
+                                    </script>
+                                    <script>
+                                        if (typeof L === 'undefined') {
+                                            document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\\/script>');
+                                        }
+                                    </script>
                                     <style>
                                         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: manipulation; }
                                         html, body { width: 100%; height: 100%; background: #F3EDF7; overflow: hidden; position: relative; }
@@ -1087,11 +1102,11 @@ fun GeoTrackApp() {
                                         window.onerror = function(msg, url, line) {
                                             console.error("LeafletError: " + msg + " at " + line);
                                             var st = document.getElementById('status-overlay');
-                                            if (st) st.innerText = "地圖提示: " + msg;
+                                            if (st) st.innerText = "提示: " + msg;
                                         };
 
                                         function setTileLayer(type) {
-                                            if (!map) return;
+                                            if (!map || typeof L === 'undefined') return;
                                             if (currentLayer) {
                                                 map.removeLayer(currentLayer);
                                             }
@@ -1119,42 +1134,48 @@ fun GeoTrackApp() {
                                             }
                                         }
 
-                                        function recenterMap() {
-                                            if (!map) return;
-                                            fixMapSize();
+                                        function initMap() {
+                                            if (typeof L === 'undefined') {
+                                                var st = document.getElementById('status-overlay');
+                                                if (st) st.innerText = "地圖核心載入中，請稍候...";
+                                                return;
+                                            }
                                             try {
+                                                map = L.map('map', { 
+                                                    zoomControl: true, 
+                                                    attributionControl: false,
+                                                    fadeAnimation: true,
+                                                    tap: false
+                                                }).setView([$centerLat, $centerLng], 14);
+
+                                                setTileLayer('$currentTileType');
+                                                
+                                                $markersJs
                                                 $polylineJs
-                                            } catch(e) {
-                                                map.setView([$centerLat, $centerLng], 14);
+
+                                                map.whenReady(function() {
+                                                    fixMapSize();
+                                                    setTimeout(fixMapSize, 150);
+                                                    setTimeout(fixMapSize, 400);
+                                                    setTimeout(fixMapSize, 1000);
+                                                });
+
+                                                window.addEventListener('resize', fixMapSize);
+                                                window.addEventListener('load', fixMapSize);
+                                                
+                                                var st = document.getElementById('status-overlay');
+                                                if (st) st.style.display = 'none';
+                                            } catch (err) {
+                                                console.error("Map init exception: " + err.message);
+                                                var st = document.getElementById('status-overlay');
+                                                if (st) st.innerText = "初始化異常: " + err.message;
                                             }
                                         }
 
-                                        try {
-                                            map = L.map('map', { 
-                                                zoomControl: true, 
-                                                attributionControl: false,
-                                                fadeAnimation: true,
-                                                tap: false
-                                            }).setView([$centerLat, $centerLng], 14);
-
-                                            setTileLayer('$currentTileType');
-                                            
-                                            $markersJs
-                                            $polylineJs
-
-                                            map.whenReady(function() {
-                                                fixMapSize();
-                                                setTimeout(fixMapSize, 150);
-                                                setTimeout(fixMapSize, 400);
-                                                setTimeout(fixMapSize, 1000);
-                                            });
-
-                                            window.addEventListener('resize', fixMapSize);
-                                            window.addEventListener('load', fixMapSize);
-                                        } catch (err) {
-                                            console.error("Map init exception: " + err.message);
-                                            var st = document.getElementById('status-overlay');
-                                            if (st) st.innerText = "初始化異常: " + err.message;
+                                        if (document.readyState === 'loading') {
+                                            document.addEventListener('DOMContentLoaded', initMap);
+                                        } else {
+                                            initMap();
                                         }
                                     </script>
                                 </body>
@@ -1188,6 +1209,9 @@ fun GeoTrackApp() {
                                             javaScriptEnabled = true
                                             domStorageEnabled = true
                                             databaseEnabled = true
+                                            loadsImagesAutomatically = true
+                                            blockNetworkImage = false
+                                            blockNetworkLoads = false
                                             useWideViewPort = true
                                             loadWithOverviewMode = true
                                             allowContentAccess = true
@@ -1196,12 +1220,20 @@ fun GeoTrackApp() {
                                             cacheMode = WebSettings.LOAD_DEFAULT
                                             builtInZoomControls = true
                                             displayZoomControls = false
-                                            userAgentString = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
+                                            userAgentString = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 GeoTrackApp/1.0"
                                         }
                                         webViewClient = object : WebViewClient() {
                                             override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                                                 super.onReceivedError(view, errorCode, description, failingUrl)
                                                 Log.e("GeoTrackMap", "WebView Error: $errorCode, $description, $failingUrl")
+                                            }
+                                            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                                                super.onReceivedError(view, request, error)
+                                                Log.e("GeoTrackMap", "Resource Error: URL=${request?.url}, code=${error?.errorCode}, desc=${error?.description}")
+                                            }
+                                            override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, errorResponse: WebResourceResponse?) {
+                                                super.onReceivedHttpError(view, request, errorResponse)
+                                                Log.w("GeoTrackMap", "HTTP Error: URL=${request?.url}, status=${errorResponse?.statusCode}")
                                             }
                                             override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
                                                 Log.w("GeoTrackMap", "SSL Error bypassed for map tiles: $error")
