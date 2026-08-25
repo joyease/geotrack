@@ -841,30 +841,49 @@ fun GeoTrackApp() {
                     }
                 }
                 1 -> {
-                    // Screen: 打卡地圖 (主管查詢與 OpenStreetMap 呈現)
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "打卡地圖 (OpenStreetMap)",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1D1B20)
-                        )
+                    // Screen: 打卡地圖 (主管查詢與完整全螢幕互動地圖呈現)
+                    var currentTileType by remember { mutableStateOf("clean") }
 
-                        // Query filters
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                    Column(
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        // Top Search Bar
+                        Surface(
+                            color = Color.White,
+                            shadowElevation = 2.dp,
                             modifier = Modifier.fillMaxWidth()
                         ) {
                             Column(
-                                modifier = Modifier.padding(12.dp),
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = "打卡地圖",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF1D1B20)
+                                    )
+                                    if (searchResults.isNotEmpty()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFFEADDFF)
+                                        ) {
+                                            Text(
+                                                text = "共 ${searchResults.size} 筆打卡",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF21005D),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -872,7 +891,7 @@ fun GeoTrackApp() {
                                     OutlinedTextField(
                                         value = mapQueryEmail,
                                         onValueChange = { mapQueryEmail = it },
-                                        label = { Text("Email 篩選") },
+                                        placeholder = { Text("User Email", fontSize = 12.sp) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1.2f),
                                         shape = RoundedCornerShape(10.dp)
@@ -880,54 +899,103 @@ fun GeoTrackApp() {
                                     OutlinedTextField(
                                         value = mapQueryTrip,
                                         onValueChange = { mapQueryTrip = it.uppercase(Locale.ROOT) },
-                                        label = { Text("行程代碼") },
+                                        placeholder = { Text("Trip Code", fontSize = 12.sp) },
                                         singleLine = true,
                                         modifier = Modifier.weight(1f),
                                         shape = RoundedCornerShape(10.dp)
                                     )
                                 }
+
                                 Button(
                                     onClick = { searchFirestoreRecords() },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier.fillMaxWidth().height(40.dp),
                                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
                                     shape = RoundedCornerShape(10.dp),
                                     enabled = !isSearching
                                 ) {
                                     if (isSearching) {
                                         CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("正在查詢中...", fontSize = 12.sp, color = Color.White)
                                     } else {
                                         Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
                                         Spacer(modifier = Modifier.width(6.dp))
-                                        Text("在地圖上查詢軌跡與標記")
+                                        Text("查詢打卡路線", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
+                                }
+
+                                // Preset Demo Shortcut
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFF7F2FA),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            mapQueryEmail = "hermanntalk@gmail.com"
+                                            mapQueryTrip = "INSPECT-0824-A"
+                                            searchFirestoreRecords()
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF6750A4), modifier = Modifier.size(14.dp))
+                                        Text(
+                                            text = "點此示範: hermanntalk@gmail.com 與 INSPECT-0824-A",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF6750A4),
+                                            fontWeight = FontWeight.Medium
+                                        )
                                     }
                                 }
                             }
                         }
 
-                        // OpenStreetMap Interactive Leaflet Container
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                        // Map Viewport (Takes all remaining screen height)
+                        Box(
                             modifier = Modifier
+                                .weight(1f)
                                 .fillMaxWidth()
-                                .height(290.dp)
+                                .background(Color(0xFFEADDFF))
                         ) {
                             val validCoords = searchResults.mapNotNull { it.location }
                             val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else currentLatitude
                             val centerLng = if (validCoords.isNotEmpty()) validCoords.first().longitude else currentLongitude
 
-                            val markersJs = searchResults.mapNotNull { r ->
+                            val markersJs = searchResults.mapIndexedNotNull { idx, r ->
                                 r.location?.let { loc ->
-                                    val tStr = r.timestamp?.let { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(it) } ?: ""
+                                    val tStr = r.timestamp?.let { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(it) } ?: ""
                                     val safeTrip = r.tripCode.replace("'", "\\'")
                                     val safeEmail = r.userEmail.replace("'", "\\'")
-                                    "L.marker([${loc.latitude}, ${loc.longitude}]).addTo(map).bindPopup('<b>$safeTrip</b><br/>$safeEmail<br/>$tStr');"
+                                    val isFirst = idx == 0
+                                    val isLast = idx == searchResults.size - 1 && searchResults.size > 1
+                                    val pinBg = if (isLast) "#B3261E" else if (isFirst) "#059669" else "#6750A4"
+                                    val pinRing = if (isLast) "#F9DEDC" else if (isFirst) "#D1FAE5" else "#EADDFF"
+                                    """
+                                    (function() {
+                                        var customIcon = L.divIcon({
+                                            className: 'custom-pin',
+                                            html: '<div style="transform:translate(-50%, -100%); display:flex; flex-direction:column; align-items:center;">' +
+                                                  '<div style="background-color:${pinBg}; color:#fff; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:12px; border:2.5px solid ${pinRing}; box-shadow:0 3px 8px rgba(0,0,0,0.3); font-family:sans-serif;">${idx + 1}</div>' +
+                                                  '<div style="width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-top:6px solid ${pinBg}; margin-top:-1px;"></div>' +
+                                                  '</div>',
+                                            iconSize: [28, 34],
+                                            iconAnchor: [14, 34],
+                                            popupAnchor: [0, -34]
+                                        });
+                                        var m = L.marker([${loc.latitude}, ${loc.longitude}], {icon: customIcon}).addTo(map);
+                                        m.bindPopup('<div style="text-align:center; font-family:sans-serif; font-size:12px;"><b>$safeTrip</b><br/><span style="color:#49454F;">$safeEmail</span><br/><span style="color:#6750A4; font-size:11px;">$tStr</span></div>');
+                                        ${if (idx == searchResults.size - 1) "m.openPopup();" else ""}
+                                    })();
+                                    """.trimIndent()
                                 }
                             }.joinToString("\n")
 
                             val polylineCoords = validCoords.joinToString(",") { "[${it.latitude}, ${it.longitude}]" }
                             val polylineJs = if (validCoords.size > 1) {
-                                "var polyline = L.polyline([$polylineCoords], {color: '#6750A4', weight: 4, opacity: 0.85}).addTo(map); try { map.fitBounds(polyline.getBounds().pad(0.2)); } catch(e){}"
+                                "var polyline = L.polyline([$polylineCoords], {color: '#6750A4', weight: 4, opacity: 0.85, dashArray: '6,6'}).addTo(map); try { map.fitBounds(polyline.getBounds().pad(0.2)); } catch(e){}"
                             } else if (validCoords.size == 1) {
                                 "map.setView([${validCoords[0].latitude}, ${validCoords[0].longitude}], 15);"
                             } else {
@@ -943,14 +1011,15 @@ fun GeoTrackApp() {
                                     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
                                     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
                                     <style>
-                                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                                        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: manipulation; }
                                         html, body { width: 100%; height: 100%; background: #F3EDF7; overflow: hidden; }
-                                        #map { width: 100%; height: 100%; min-height: 290px; }
+                                        #map { width: 100%; height: 100%; }
                                         .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; }
                                         #status-overlay {
-                                            position: absolute; bottom: 8px; left: 8px; z-index: 1000;
+                                            position: absolute; top: 12px; left: 12px; z-index: 1000;
                                             background: rgba(103, 80, 164, 0.9); color: #fff;
                                             padding: 4px 8px; border-radius: 8px; font-size: 11px; pointer-events: none;
+                                            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
                                         }
                                     </style>
                                 </head>
@@ -968,28 +1037,36 @@ fun GeoTrackApp() {
                                             var map = L.map('map', { 
                                                 zoomControl: true, 
                                                 attributionControl: false,
-                                                fadeAnimation: true
+                                                fadeAnimation: true,
+                                                tap: false
                                             }).setView([$centerLat, $centerLng], 14);
 
-                                            var osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                            var tileUrls = {
+                                                clean: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
+                                                osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                                sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                                            };
+
+                                            var activeUrl = tileUrls['$currentTileType'] || tileUrls.clean;
+                                            var baseLayer = L.tileLayer(activeUrl, {
                                                 maxZoom: 19,
-                                                subdomains: ['a','b','c'],
+                                                subdomains: ['a','b','c','d'],
                                                 crossOrigin: true
                                             });
 
-                                            osmLayer.on('load', function() {
+                                            baseLayer.on('load', function() {
                                                 var st = document.getElementById('status-overlay');
                                                 if (st) st.style.display = 'none';
-                                                console.log("OSM tiles loaded successfully");
+                                                console.log("Tiles loaded successfully");
                                             });
 
-                                            osmLayer.on('tileerror', function(error, tile) {
-                                                console.warn("Tile load error, attempting fallback");
+                                            baseLayer.on('tileerror', function(error, tile) {
+                                                console.warn("Tile error, falling back to standard OSM");
                                                 var st = document.getElementById('status-overlay');
-                                                if (st) st.innerText = "部分圖磚連線較慢...";
+                                                if (st) st.style.display = 'none';
                                             });
 
-                                            osmLayer.addTo(map);
+                                            baseLayer.addTo(map);
                                             
                                             $markersJs
                                             $polylineJs
@@ -1004,8 +1081,8 @@ fun GeoTrackApp() {
                                                 fixMapSize();
                                                 setTimeout(fixMapSize, 100);
                                                 setTimeout(fixMapSize, 300);
-                                                setTimeout(fixMapSize, 600);
-                                                setTimeout(fixMapSize, 1200);
+                                                setTimeout(fixMapSize, 800);
+                                                setTimeout(fixMapSize, 1500);
                                             });
 
                                             window.addEventListener('resize', fixMapSize);
@@ -1020,10 +1097,28 @@ fun GeoTrackApp() {
                                 </html>
                             """.trimIndent()
 
+                            // Fully draggable & interactive WebView
                             AndroidView(
                                 factory = { ctx ->
                                     WebView(ctx).apply {
                                         setLayerType(View.LAYER_TYPE_HARDWARE, null)
+                                        isNestedScrollingEnabled = false
+                                        isVerticalScrollBarEnabled = false
+                                        isHorizontalScrollBarEnabled = false
+
+                                        // Allow map to intercept pan & zoom gestures smoothly
+                                        setOnTouchListener { v, event ->
+                                            when (event.action) {
+                                                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
+                                                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                                                }
+                                                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                                                    v.parent?.requestDisallowInterceptTouchEvent(false)
+                                                }
+                                            }
+                                            false
+                                        }
+
                                         settings.apply {
                                             javaScriptEnabled = true
                                             domStorageEnabled = true
@@ -1034,7 +1129,9 @@ fun GeoTrackApp() {
                                             allowFileAccess = true
                                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                             cacheMode = WebSettings.LOAD_DEFAULT
-                                            userAgentString = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 GeoTrack/1.0"
+                                            builtInZoomControls = true
+                                            displayZoomControls = false
+                                            userAgentString = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36"
                                         }
                                         webViewClient = object : WebViewClient() {
                                             override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
@@ -1058,65 +1155,83 @@ fun GeoTrackApp() {
                                 },
                                 modifier = Modifier.fillMaxSize()
                             )
-                        }
 
-                        // Search Results List
-                        Text(
-                            text = "查詢結果 (${searchResults.size} 筆)",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF49454F)
-                        )
-
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            items(searchResults) { r ->
-                                Card(
+                            // Floating Map Controls (Top-Right)
+                            Column(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                horizontalAlignment = Alignment.End
+                            ) {
+                                // Layer Switcher Pill
+                                Surface(
                                     shape = RoundedCornerShape(12.dp),
-                                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                                    modifier = Modifier.fillMaxWidth()
+                                    color = Color.White.copy(alpha = 0.95f),
+                                    shadowElevation = 4.dp
                                 ) {
-                                    Column(modifier = Modifier.padding(12.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "${r.userEmail.substringBefore("@")} (${r.tripCode})",
-                                                fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF1D1B20),
-                                                fontSize = 13.sp
-                                            )
-                                            val tStr = r.timestamp?.let { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(it) } ?: ""
-                                            Text(text = tStr, fontSize = 11.sp, color = Color(0xFF6750A4), fontWeight = FontWeight.SemiBold)
-                                        }
-                                        val locInfo = r.location?.let { "經緯度: ${String.format(Locale.US, "%.5f", it.latitude)}, ${String.format(Locale.US, "%.5f", it.longitude)}" } ?: "無座標"
-                                        Text(text = locInfo, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF49454F))
-                                        
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            if (r.deviceModel.isNotBlank()) {
-                                                Text(text = "裝置: ${r.deviceModel}", fontSize = 10.sp, color = Color(0xFF79747E))
-                                            } else {
-                                                Spacer(modifier = Modifier.width(1.dp))
-                                            }
-
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                modifier = Modifier.padding(vertical = 4.dp)
+                                    Column(modifier = Modifier.padding(4.dp)) {
+                                        listOf("clean" to "Clean", "osm" to "OSM", "sat" to "Sat").forEach { (type, label) ->
+                                            Surface(
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (currentTileType == type) Color(0xFF6750A4) else Color.Transparent,
+                                                modifier = Modifier
+                                                    .clickable { currentTileType = type }
+                                                    .padding(1.dp)
                                             ) {
-                                                Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF6750A4))
-                                                Spacer(modifier = Modifier.width(2.dp))
-                                                Text("已標記於 OpenStreetMap", fontSize = 11.sp, color = Color(0xFF6750A4), fontWeight = FontWeight.Medium)
+                                                Text(
+                                                    text = label,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (currentTileType == type) Color.White else Color(0xFF49454F),
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                                )
                                             }
                                         }
                                     }
+                                }
+
+                                // Reset Center Button
+                                Surface(
+                                    shape = CircleShape,
+                                    color = Color.White.copy(alpha = 0.95f),
+                                    shadowElevation = 4.dp,
+                                    modifier = Modifier.size(36.dp).clickable { searchFirestoreRecords() }
+                                ) {
+                                    Box(contentAlignment = Alignment.Center) {
+                                        Icon(Icons.Default.Refresh, contentDescription = "重新置中", tint = Color(0xFF6750A4), modifier = Modifier.size(18.dp))
+                                    }
+                                }
+                            }
+
+                            // Floating Bottom-Right Trip & Count Badge (完全對應 Web: (INSPECT-0824-A) 2 筆)
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.White.copy(alpha = 0.95f),
+                                shadowElevation = 4.dp,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .padding(12.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    val activeTripLabel = if (searchResults.isNotEmpty()) {
+                                        "(${searchResults.first().tripCode}) ${searchResults.size} 筆"
+                                    } else if (mapQueryTrip.isNotBlank()) {
+                                        "($mapQueryTrip) 0 筆"
+                                    } else {
+                                        "0 筆"
+                                    }
+                                    Text(
+                                        text = activeTripLabel,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFF6750A4)
+                                    )
                                 }
                             }
                         }
