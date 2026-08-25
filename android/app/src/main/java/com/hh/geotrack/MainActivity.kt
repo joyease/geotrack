@@ -843,7 +843,15 @@ fun GeoTrackApp() {
                 }
                 1 -> {
                     // Screen: 打卡地圖 (主管查詢與完整全螢幕互動地圖呈現)
-                    var currentTileType by remember { mutableStateOf("clean") }
+                    var currentTileType by remember { mutableStateOf("osm") }
+                    val webViewRef = remember { mutableStateOf<WebView?>(null) }
+
+                    // Automatically perform search when opening Map tab if empty
+                    LaunchedEffect(Unit) {
+                        if (searchResults.isEmpty()) {
+                            searchFirestoreRecords()
+                        }
+                    }
 
                     Column(
                         modifier = Modifier.fillMaxSize()
@@ -864,7 +872,7 @@ fun GeoTrackApp() {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(
-                                        text = "打卡地圖",
+                                        text = "打卡地圖 (Map View)",
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = Color(0xFF1D1B20)
@@ -962,8 +970,8 @@ fun GeoTrackApp() {
                                 .background(Color(0xFFEADDFF))
                         ) {
                             val validCoords = searchResults.mapNotNull { it.location }
-                            val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else currentLatitude
-                            val centerLng = if (validCoords.isNotEmpty()) validCoords.first().longitude else currentLongitude
+                            val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else if (currentLatitude != 0.0) currentLatitude else 25.033964
+                            val centerLng = if (validCoords.isNotEmpty()) validCoords.first().longitude else if (currentLongitude != 0.0) currentLongitude else 121.564468
 
                             val markersJs = searchResults.mapIndexedNotNull { idx, r ->
                                 r.location?.let { loc ->
@@ -979,16 +987,16 @@ fun GeoTrackApp() {
                                         var customIcon = L.divIcon({
                                             className: 'custom-pin',
                                             html: '<div style="transform:translate(-50%, -100%); display:flex; flex-direction:column; align-items:center;">' +
-                                                  '<div style="background-color:${pinBg}; color:#fff; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:12px; border:2.5px solid ${pinRing}; box-shadow:0 3px 8px rgba(0,0,0,0.3); font-family:sans-serif;">${idx + 1}</div>' +
-                                                  '<div style="width:0; height:0; border-left:5px solid transparent; border-right:5px solid transparent; border-top:6px solid ${pinBg}; margin-top:-1px;"></div>' +
+                                                  '<div style="background-color:${pinBg}; color:#fff; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:12px; border:2.5px solid ${pinRing}; box-shadow:0 3px 8px rgba(0,0,0,0.35); font-family:sans-serif;">${idx + 1}</div>' +
+                                                  '<div style="width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:7px solid ${pinBg}; margin-top:-1px;"></div>' +
                                                   '</div>',
-                                            iconSize: [28, 34],
-                                            iconAnchor: [14, 34],
-                                            popupAnchor: [0, -34]
+                                            iconSize: [30, 36],
+                                            iconAnchor: [15, 36],
+                                            popupAnchor: [0, -36]
                                         });
                                         var m = L.marker([${loc.latitude}, ${loc.longitude}], {icon: customIcon}).addTo(map);
-                                        m.bindPopup('<div style="text-align:center; font-family:sans-serif; font-size:12px;"><b>$safeTrip</b><br/><span style="color:#49454F;">$safeEmail</span><br/><span style="color:#6750A4; font-size:11px;">$tStr</span></div>');
-                                        ${if (idx == searchResults.size - 1) "m.openPopup();" else ""}
+                                        m.bindPopup('<div style="text-align:center; font-family:sans-serif; font-size:12px; line-height:1.4;"><b>$safeTrip</b><br/><span style="color:#49454F;">$safeEmail</span><br/><span style="color:#6750A4; font-size:11px; font-weight:bold;">$tStr</span></div>');
+                                        ${if (idx == 0 || idx == searchResults.size - 1) "m.openPopup();" else ""}
                                     })();
                                     """.trimIndent()
                                 }
@@ -996,11 +1004,11 @@ fun GeoTrackApp() {
 
                             val polylineCoords = validCoords.joinToString(",") { "[${it.latitude}, ${it.longitude}]" }
                             val polylineJs = if (validCoords.size > 1) {
-                                "var polyline = L.polyline([$polylineCoords], {color: '#6750A4', weight: 4, opacity: 0.85, dashArray: '6,6'}).addTo(map); try { map.fitBounds(polyline.getBounds().pad(0.2)); } catch(e){}"
+                                "var polyline = L.polyline([$polylineCoords], {color: '#6750A4', weight: 4, opacity: 0.85, dashArray: '6,6'}).addTo(map); try { map.fitBounds(polyline.getBounds().pad(0.25)); } catch(e){}"
                             } else if (validCoords.size == 1) {
                                 "map.setView([${validCoords[0].latitude}, ${validCoords[0].longitude}], 15);"
                             } else {
-                                "L.marker([$currentLatitude, $currentLongitude]).addTo(map).bindPopup('<b>目前 GPS 位置</b><br/>$currentLatitude, $currentLongitude').openPopup(); map.setView([$currentLatitude, $currentLongitude], 14);"
+                                "L.marker([$centerLat, $centerLng]).addTo(map).bindPopup('<b>預設中心位置</b><br/>$centerLat, $centerLng').openPopup(); map.setView([$centerLat, $centerLng], 14);"
                             }
 
                             val htmlContent = """
@@ -1009,18 +1017,19 @@ fun GeoTrackApp() {
                                 <head>
                                     <meta charset="utf-8">
                                     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+                                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
                                     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
-                                    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+                                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
                                     <style>
                                         * { margin: 0; padding: 0; box-sizing: border-box; touch-action: manipulation; }
-                                        html, body { width: 100%; height: 100%; background: #F3EDF7; overflow: hidden; }
-                                        #map { width: 100%; height: 100%; }
-                                        .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; }
+                                        html, body { width: 100%; height: 100%; background: #F3EDF7; overflow: hidden; position: relative; }
+                                        #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; z-index: 1; }
+                                        .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; background: #e8e3f0; }
                                         #status-overlay {
                                             position: absolute; top: 12px; left: 12px; z-index: 1000;
-                                            background: rgba(103, 80, 164, 0.9); color: #fff;
-                                            padding: 4px 8px; border-radius: 8px; font-size: 11px; pointer-events: none;
-                                            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+                                            background: rgba(103, 80, 164, 0.92); color: #fff;
+                                            padding: 4px 10px; border-radius: 8px; font-size: 11px; pointer-events: none;
+                                            box-shadow: 0 2px 6px rgba(0,0,0,0.25); font-family: sans-serif;
                                         }
                                     </style>
                                 </head>
@@ -1028,62 +1037,77 @@ fun GeoTrackApp() {
                                     <div id="map"></div>
                                     <div id="status-overlay">地圖載入中...</div>
                                     <script>
+                                        var map = null;
+                                        var currentLayer = null;
+                                        var tileUrls = {
+                                            osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                            clean: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                                            sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                                        };
+
                                         window.onerror = function(msg, url, line) {
                                             console.error("LeafletError: " + msg + " at " + line);
                                             var st = document.getElementById('status-overlay');
-                                            if (st) st.innerText = "地圖腳本錯誤: " + msg;
+                                            if (st) st.innerText = "地圖提示: " + msg;
                                         };
 
+                                        function setTileLayer(type) {
+                                            if (!map) return;
+                                            if (currentLayer) {
+                                                map.removeLayer(currentLayer);
+                                            }
+                                            var url = tileUrls[type] || tileUrls.osm;
+                                            currentLayer = L.tileLayer(url, {
+                                                maxZoom: 19,
+                                                subdomains: ['a','b','c'],
+                                                crossOrigin: true
+                                            });
+                                            currentLayer.on('load', function() {
+                                                var st = document.getElementById('status-overlay');
+                                                if (st) st.style.display = 'none';
+                                            });
+                                            currentLayer.on('tileerror', function() {
+                                                console.warn("Tile error on " + type + ", trying standard OSM");
+                                                var st = document.getElementById('status-overlay');
+                                                if (st) st.style.display = 'none';
+                                            });
+                                            currentLayer.addTo(map);
+                                        }
+
+                                        function fixMapSize() {
+                                            if (map) {
+                                                map.invalidateSize(true);
+                                            }
+                                        }
+
+                                        function recenterMap() {
+                                            if (!map) return;
+                                            fixMapSize();
+                                            try {
+                                                $polylineJs
+                                            } catch(e) {
+                                                map.setView([$centerLat, $centerLng], 14);
+                                            }
+                                        }
+
                                         try {
-                                            var map = L.map('map', { 
+                                            map = L.map('map', { 
                                                 zoomControl: true, 
                                                 attributionControl: false,
                                                 fadeAnimation: true,
                                                 tap: false
                                             }).setView([$centerLat, $centerLng], 14);
 
-                                            var tileUrls = {
-                                                clean: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}@2x.png',
-                                                osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                                sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-                                            };
-
-                                            var activeUrl = tileUrls['$currentTileType'] || tileUrls.clean;
-                                            var baseLayer = L.tileLayer(activeUrl, {
-                                                maxZoom: 19,
-                                                subdomains: ['a','b','c','d'],
-                                                crossOrigin: true
-                                            });
-
-                                            baseLayer.on('load', function() {
-                                                var st = document.getElementById('status-overlay');
-                                                if (st) st.style.display = 'none';
-                                                console.log("Tiles loaded successfully");
-                                            });
-
-                                            baseLayer.on('tileerror', function(error, tile) {
-                                                console.warn("Tile error, falling back to standard OSM");
-                                                var st = document.getElementById('status-overlay');
-                                                if (st) st.style.display = 'none';
-                                            });
-
-                                            baseLayer.addTo(map);
+                                            setTileLayer('$currentTileType');
                                             
                                             $markersJs
                                             $polylineJs
 
-                                            function fixMapSize() {
-                                                if (map) {
-                                                    map.invalidateSize(true);
-                                                }
-                                            }
-
                                             map.whenReady(function() {
                                                 fixMapSize();
-                                                setTimeout(fixMapSize, 100);
-                                                setTimeout(fixMapSize, 300);
-                                                setTimeout(fixMapSize, 800);
-                                                setTimeout(fixMapSize, 1500);
+                                                setTimeout(fixMapSize, 150);
+                                                setTimeout(fixMapSize, 400);
+                                                setTimeout(fixMapSize, 1000);
                                             });
 
                                             window.addEventListener('resize', fixMapSize);
@@ -1102,6 +1126,7 @@ fun GeoTrackApp() {
                             AndroidView(
                                 factory = { ctx ->
                                     WebView(ctx).apply {
+                                        webViewRef.value = this
                                         setLayerType(View.LAYER_TYPE_HARDWARE, null)
                                         isNestedScrollingEnabled = false
                                         isVerticalScrollBarEnabled = false
@@ -1148,11 +1173,17 @@ fun GeoTrackApp() {
                                                 return true
                                             }
                                         }
+                                        tag = htmlContent.hashCode()
                                         loadDataWithBaseURL("https://tile.openstreetmap.org/", htmlContent, "text/html", "UTF-8", null)
                                     }
                                 },
                                 update = { webView ->
-                                    webView.loadDataWithBaseURL("https://tile.openstreetmap.org/", htmlContent, "text/html", "UTF-8", null)
+                                    webViewRef.value = webView
+                                    val currentHash = htmlContent.hashCode()
+                                    if (webView.tag != currentHash) {
+                                        webView.tag = currentHash
+                                        webView.loadDataWithBaseURL("https://tile.openstreetmap.org/", htmlContent, "text/html", "UTF-8", null)
+                                    }
                                 },
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -1172,12 +1203,15 @@ fun GeoTrackApp() {
                                     shadowElevation = 4.dp
                                 ) {
                                     Column(modifier = Modifier.padding(4.dp)) {
-                                        listOf("clean" to "Clean", "osm" to "OSM", "sat" to "Sat").forEach { (type, label) ->
+                                        listOf("osm" to "OSM", "clean" to "Clean", "sat" to "Sat").forEach { (type, label) ->
                                             Surface(
                                                 shape = RoundedCornerShape(8.dp),
                                                 color = if (currentTileType == type) Color(0xFF6750A4) else Color.Transparent,
                                                 modifier = Modifier
-                                                    .clickable { currentTileType = type }
+                                                    .clickable {
+                                                        currentTileType = type
+                                                        webViewRef.value?.evaluateJavascript("setTileLayer('$type');", null)
+                                                    }
                                                     .padding(1.dp)
                                             ) {
                                                 Text(
@@ -1197,7 +1231,11 @@ fun GeoTrackApp() {
                                     shape = CircleShape,
                                     color = Color.White.copy(alpha = 0.95f),
                                     shadowElevation = 4.dp,
-                                    modifier = Modifier.size(36.dp).clickable { searchFirestoreRecords() }
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clickable {
+                                            webViewRef.value?.evaluateJavascript("recenterMap();", null) ?: searchFirestoreRecords()
+                                        }
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.Refresh, contentDescription = "重新置中", tint = Color(0xFF6750A4), modifier = Modifier.size(18.dp))
