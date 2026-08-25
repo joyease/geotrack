@@ -1012,8 +1012,8 @@ fun GeoTrackApp() {
                                 .background(Color(0xFFEADDFF))
                         ) {
                             val validCoords = searchResults.mapNotNull { it.location }
-                            val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else if (currentLatitude != 0.0) currentLatitude else 25.033964
-                            val centerLng = if (validCoords.isNotEmpty()) validCoords.first().longitude else if (currentLongitude != 0.0) currentLongitude else 121.564468
+                            val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else if (currentLatitude != 0.0) currentLatitude else 25.0339
+                            val centerLng = if (validCoords.isNotEmpty()) validCoords.first().longitude else if (currentLongitude != 0.0) currentLongitude else 121.5644
 
                             val markersJs = searchResults.mapIndexedNotNull { idx, r ->
                                 r.location?.let { loc ->
@@ -1050,7 +1050,7 @@ fun GeoTrackApp() {
                             } else if (validCoords.size == 1) {
                                 "map.setView([${validCoords[0].latitude}, ${validCoords[0].longitude}], 15);"
                             } else {
-                                "L.marker([$centerLat, $centerLng]).addTo(map).bindPopup('<b>預設中心位置</b><br/>$centerLat, $centerLng').openPopup(); map.setView([$centerLat, $centerLng], 14);"
+                                "L.marker([$centerLat, $centerLng]).addTo(map).bindPopup('<b>預設中心點 (台北)</b><br/>$centerLat, $centerLng').openPopup(); map.setView([$centerLat, $centerLng], 14);"
                             }
 
                             val htmlContent = """
@@ -1058,132 +1058,71 @@ fun GeoTrackApp() {
                                 <html>
                                 <head>
                                     <meta charset="utf-8">
-                                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                                    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+                                    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
                                     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-                                    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.css" />
-                                    
-                                    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
-                                    <script>
-                                        if (typeof L === 'undefined') {
-                                            document.write('<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"><\\/script>');
-                                        }
-                                    </script>
-                                    <script>
-                                        if (typeof L === 'undefined') {
-                                            document.write('<script src="https://cdn.jsdelivr.net/npm/leaflet@1.9.4/dist/leaflet.js"><\\/script>');
-                                        }
-                                    </script>
+                                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
                                     <style>
-                                        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: manipulation; }
-                                        html, body { width: 100%; height: 100%; background: #F3EDF7; overflow: hidden; position: relative; }
-                                        #map { position: absolute; top: 0; left: 0; right: 0; bottom: 0; width: 100%; height: 100%; z-index: 1; }
-                                        .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; background: #e8e3f0; }
-                                        #status-overlay {
-                                            position: absolute; top: 12px; left: 12px; z-index: 1000;
-                                            background: rgba(103, 80, 164, 0.92); color: #fff;
-                                            padding: 4px 10px; border-radius: 8px; font-size: 11px; pointer-events: none;
-                                            box-shadow: 0 2px 6px rgba(0,0,0,0.25); font-family: sans-serif;
-                                        }
+                                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                                        html, body { width: 100%; height: 100%; margin: 0; padding: 0; background: #e5e3df; overflow: hidden; }
+                                        #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+                                        .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
                                     </style>
                                 </head>
                                 <body>
                                     <div id="map"></div>
-                                    <div id="status-overlay">地圖載入中...</div>
                                     <script>
-                                        var map = null;
-                                        var currentLayer = null;
-                                        var tileUrls = {
-                                            osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                            clean: 'https://basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                                            sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-                                        };
-
-                                        window.onerror = function(msg, url, line) {
-                                            console.error("LeafletError: " + msg + " at " + line);
-                                            var st = document.getElementById('status-overlay');
-                                            if (st) st.innerText = "提示: " + msg;
-                                        };
-
-                                        function setTileLayer(type) {
-                                            if (!map || typeof L === 'undefined') return;
-                                            if (currentLayer) {
-                                                map.removeLayer(currentLayer);
-                                            }
-                                            var url = tileUrls[type] || tileUrls.osm;
-                                            currentLayer = L.tileLayer(url, {
-                                                maxZoom: 19,
-                                                subdomains: ['a','b','c'],
-                                                crossOrigin: true
-                                            });
-                                            currentLayer.on('load', function() {
-                                                var st = document.getElementById('status-overlay');
-                                                if (st) st.style.display = 'none';
-                                            });
-                                            currentLayer.on('tileerror', function() {
-                                                console.warn("Tile error on " + type + ", trying standard OSM");
-                                                var st = document.getElementById('status-overlay');
-                                                if (st) st.style.display = 'none';
-                                            });
-                                            currentLayer.addTo(map);
-                                        }
-
-                                        function fixMapSize() {
-                                            if (map) {
-                                                map.invalidateSize(true);
-                                            }
-                                        }
-
-                                        function initMap() {
-                                            if (typeof L === 'undefined') {
-                                                var st = document.getElementById('status-overlay');
-                                                if (st) st.innerText = "地圖核心載入中，請稍候...";
-                                                return;
-                                            }
+                                        document.addEventListener("DOMContentLoaded", function() {
                                             try {
-                                                map = L.map('map', { 
-                                                    zoomControl: true, 
-                                                    attributionControl: false,
-                                                    fadeAnimation: true,
-                                                    tap: false
+                                                var map = L.map('map', {
+                                                    zoomControl: true,
+                                                    attributionControl: false
                                                 }).setView([$centerLat, $centerLng], 14);
 
-                                                setTileLayer('$currentTileType');
-                                                
+                                                window.currentMap = map;
+
+                                                // 預設採用 CartoDB 高速高容錯 Voyager 圖資
+                                                var tileUrls = {
+                                                    clean: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                                                    osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                                    sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                                                };
+
+                                                var initialUrl = tileUrls['$currentTileType'] || tileUrls.clean;
+                                                var tileLayer = L.tileLayer(initialUrl, {
+                                                    maxZoom: 19,
+                                                    subdomains: 'abcd',
+                                                    attribution: '&copy; CARTO &copy; OpenStreetMap'
+                                                }).addTo(map);
+
+                                                window.setMapTileType = function(type) {
+                                                    if (!map) return;
+                                                    map.removeLayer(tileLayer);
+                                                    var newUrl = tileUrls[type] || tileUrls.clean;
+                                                    tileLayer = L.tileLayer(newUrl, {
+                                                        maxZoom: 19,
+                                                        subdomains: 'abcd'
+                                                    }).addTo(map);
+                                                };
+
                                                 $markersJs
                                                 $polylineJs
 
-                                                map.whenReady(function() {
-                                                    fixMapSize();
-                                                    setTimeout(fixMapSize, 150);
-                                                    setTimeout(fixMapSize, 400);
-                                                    setTimeout(fixMapSize, 1000);
-                                                });
-
-                                                window.addEventListener('resize', fixMapSize);
-                                                window.addEventListener('load', fixMapSize);
-                                                
-                                                var st = document.getElementById('status-overlay');
-                                                if (st) st.style.display = 'none';
+                                                // 多次觸發 invalidateSize，保證在 Compose 渲染完成後圖資 100% 刷出
+                                                setTimeout(function() { map.invalidateSize(); }, 150);
+                                                setTimeout(function() { map.invalidateSize(); }, 400);
+                                                setTimeout(function() { map.invalidateSize(); }, 1000);
                                             } catch (err) {
-                                                console.error("Map init exception: " + err.message);
-                                                var st = document.getElementById('status-overlay');
-                                                if (st) st.innerText = "初始化異常: " + err.message;
+                                                console.error("Leaflet Map init error:", err);
                                             }
-                                        }
-
-                                        if (document.readyState === 'loading') {
-                                            document.addEventListener('DOMContentLoaded', initMap);
-                                        } else {
-                                            initMap();
-                                        }
+                                        });
                                     </script>
                                 </body>
                                 </html>
                             """.trimIndent()
 
-                            // Fully draggable & interactive WebView
+                            // Fully interactive WebView
                             AndroidView(
+                                modifier = Modifier.fillMaxSize(),
                                 factory = { ctx ->
                                     WebView(ctx).apply {
                                         webViewRef.value = this
@@ -1220,36 +1159,31 @@ fun GeoTrackApp() {
                                             cacheMode = WebSettings.LOAD_DEFAULT
                                             builtInZoomControls = true
                                             displayZoomControls = false
-                                            userAgentString = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 GeoTrackApp/1.0"
+                                            userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
                                         }
+
                                         webViewClient = object : WebViewClient() {
                                             override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                                                 super.onReceivedError(view, errorCode, description, failingUrl)
                                                 Log.e("GeoTrackMap", "WebView Error: $errorCode, $description, $failingUrl")
                                             }
-                                            override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
-                                                super.onReceivedError(view, request, error)
-                                                Log.e("GeoTrackMap", "Resource Error: URL=${request?.url}, code=${error?.errorCode}, desc=${error?.description}")
-                                            }
-                                            override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, errorResponse: WebResourceResponse?) {
-                                                super.onReceivedHttpError(view, request, errorResponse)
-                                                Log.w("GeoTrackMap", "HTTP Error: URL=${request?.url}, status=${errorResponse?.statusCode}")
-                                            }
                                             override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
-                                                Log.w("GeoTrackMap", "SSL Error bypassed for map tiles: $error")
+                                                Log.w("GeoTrackMap", "SSL Error bypassed: $error")
                                                 handler?.proceed()
                                             }
                                         }
+
                                         webChromeClient = object : WebChromeClient() {
                                             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                                                 consoleMessage?.let {
-                                                    Log.d("GeoTrackMapJS", "${it.messageLevel()}: ${it.message()} -- From line ${it.lineNumber()} of ${it.sourceId()}")
+                                                    Log.d("GeoTrackMapJS", "${it.messageLevel()}: ${it.message()}")
                                                 }
                                                 return true
                                             }
                                         }
+
                                         tag = htmlContent.hashCode()
-                                        loadDataWithBaseURL("https://tile.openstreetmap.org/", htmlContent, "text/html", "UTF-8", null)
+                                        loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
                                     }
                                 },
                                 update = { webView ->
@@ -1257,10 +1191,9 @@ fun GeoTrackApp() {
                                     val currentHash = htmlContent.hashCode()
                                     if (webView.tag != currentHash) {
                                         webView.tag = currentHash
-                                        webView.loadDataWithBaseURL("https://tile.openstreetmap.org/", htmlContent, "text/html", "UTF-8", null)
+                                        webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
                                     }
-                                },
-                                modifier = Modifier.fillMaxSize()
+                                }
                             )
 
                             // Floating Map Controls (Top-Right)
