@@ -20,7 +20,7 @@ export const CheckInScreen: React.FC<Props> = ({
   showToast,
   onNavigateToMapWithTrip
 }) => {
-  const [tripCode, setTripCode] = useState('TRP-2024-08');
+  const [tripCode, setTripCode] = useState('TAIPEI');
   const [location, setLocation] = useState<GeoPoint | null>(null);
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [addressHint, setAddressHint] = useState<string>('');
@@ -30,9 +30,8 @@ export const CheckInScreen: React.FC<Props> = ({
   const [recentCheckIns, setRecentCheckIns] = useState<CheckInRecord[]>([]);
 
   const tripCodeSuggestions = [
+    'TAIPEI',
     'TRP-2024-08',
-    'TRP-2024-07',
-    'INSPECT-0824-A',
     'ROUTE-METRO-99'
   ];
 

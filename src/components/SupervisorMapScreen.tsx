@@ -9,7 +9,8 @@ import {
   Layers,
   RotateCcw,
   Sparkles,
-  Route
+  Route,
+  AlertTriangle
 } from 'lucide-react';
 
 interface Props {
@@ -19,12 +20,13 @@ interface Props {
 }
 
 export const SupervisorMapScreen: React.FC<Props> = ({
-  initialEmail = '',
-  initialTripCode = '',
+  initialEmail = 'hermanntalk@gmail.com',
+  initialTripCode = 'TAIPEI',
   showToast
 }) => {
-  const [searchEmail, setSearchEmail] = useState(initialEmail);
-  const [searchTripCode, setSearchTripCode] = useState(initialTripCode);
+  const [searchEmail, setSearchEmail] = useState(initialEmail || 'hermanntalk@gmail.com');
+  const [searchTripCode, setSearchTripCode] = useState(initialTripCode || 'TAIPEI');
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [matchedRecords, setMatchedRecords] = useState<CheckInRecord[]>([]);
   const [tileLayerType, setTileLayerType] = useState<'osm' | 'clean' | 'satellite'>('clean');
@@ -208,6 +210,7 @@ export const SupervisorMapScreen: React.FC<Props> = ({
 
   const handleSearch = async (emailQuery: string, tripQuery: string, userInitiated = true) => {
     setIsSearching(true);
+    setSearchError(null);
 
     try {
       // 1. Try querying live Firestore directly first
@@ -234,15 +237,18 @@ export const SupervisorMapScreen: React.FC<Props> = ({
       setMatchedRecords(results);
 
       if (results.length === 0) {
+        const err = `查無符合條件的打卡紀錄 (Trip: ${tripQuery.trim() || '任意'}, Email: ${emailQuery.trim() || '任意'})`;
+        setSearchError(err);
         if (userInitiated) {
-          showToast('查無符合此條件的打卡紀錄', 'error');
+          showToast(err, 'error');
         }
         if (markersLayerRef.current) markersLayerRef.current.clearLayers();
         if (polylineLayerRef.current) polylineLayerRef.current.clearLayers();
       } else {
+        setSearchError(null);
         renderMarkersOnMap(results);
         if (userInitiated) {
-          showToast(`已於地圖標示 ${results.length} 筆打卡點`, 'success');
+          showToast(`已於地圖標示 ${results.length} 筆打卡點 (${tripQuery.trim() || '全部'})`, 'success');
         }
       }
     } catch {
@@ -250,7 +256,10 @@ export const SupervisorMapScreen: React.FC<Props> = ({
       const results = StorageService.searchCheckIns(emailQuery, tripQuery);
       setMatchedRecords(results);
       if (results.length > 0) {
+        setSearchError(null);
         renderMarkersOnMap(results);
+      } else {
+        setSearchError(`查無符合條件的打卡紀錄 (Trip: ${tripQuery.trim() || '任意'})`);
       }
     }
   };
@@ -347,6 +356,13 @@ export const SupervisorMapScreen: React.FC<Props> = ({
             <span>輸入 hermanntalk@gmail.com 與 TAIPEI 看示範</span>
           </button>
         </div>
+
+        {searchError && (
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-[#F9DEDC] border border-[#B3261E]/30 text-[#601410] text-xs">
+            <AlertTriangle className="w-4 h-4 text-[#B3261E] shrink-0" />
+            <span>{searchError}</span>
+          </div>
+        )}
       </div>
 
       {/* Embedded Leaflet Map Container */}

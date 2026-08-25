@@ -10,6 +10,8 @@ import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
 import android.webkit.ConsoleMessage
+import android.webkit.SslErrorHandler
+import android.net.http.SslError
 import android.util.Log
 import android.net.Uri
 import android.content.Intent
@@ -26,6 +28,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -124,7 +127,7 @@ fun GeoTrackApp() {
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var userEmail by remember { mutableStateOf("hermanntalk@gmail.com") }
-    var tripCode by remember { mutableStateOf("INSPECT-0824-A") }
+    var tripCode by remember { mutableStateOf("TAIPEI") }
     var currentLatitude by remember { mutableDoubleStateOf(25.033964) }
     var currentLongitude by remember { mutableDoubleStateOf(121.564468) }
     var currentAccuracy by remember { mutableFloatStateOf(4.5f) }
@@ -135,8 +138,9 @@ fun GeoTrackApp() {
 
     // Query state for Map screen
     var mapQueryEmail by remember { mutableStateOf("hermanntalk@gmail.com") }
-    var mapQueryTrip by remember { mutableStateOf("INSPECT-0824-A") }
+    var mapQueryTrip by remember { mutableStateOf("TAIPEI") }
     var searchResults by remember { mutableStateOf<List<CheckInModel>>(emptyList()) }
+    var searchErrorMessage by remember { mutableStateOf<String?>(null) }
     var isSearching by remember { mutableStateOf(false) }
     var isExporting by remember { mutableStateOf(false) }
     var isResettingData by remember { mutableStateOf(false) }
@@ -260,6 +264,7 @@ fun GeoTrackApp() {
 
     fun searchFirestoreRecords() {
         isSearching = true
+        searchErrorMessage = null
         val cleanEmail = mapQueryEmail.trim()
         val cleanTrip = mapQueryTrip.trim().uppercase(Locale.ROOT)
 
@@ -289,12 +294,21 @@ fun GeoTrackApp() {
                     val matchTrip = cleanTrip.isBlank() || item.tripCode.contains(cleanTrip, ignoreCase = true)
                     matchEmail && matchTrip
                 }
-                searchResults = if (filtered.isNotEmpty()) filtered else list
-                Toast.makeText(context, "已載入 ${searchResults.size} 筆打卡點", Toast.LENGTH_SHORT).show()
+
+                if (filtered.isNotEmpty()) {
+                    searchResults = filtered
+                    searchErrorMessage = null
+                    Toast.makeText(context, "已成功載入 ${searchResults.size} 筆「$cleanTrip」打卡點", Toast.LENGTH_SHORT).show()
+                } else {
+                    searchResults = emptyList()
+                    searchErrorMessage = "查無符合條件的打卡紀錄 (Trip Code: $cleanTrip, Email: $cleanEmail)"
+                    Toast.makeText(context, searchErrorMessage, Toast.LENGTH_LONG).show()
+                }
             }
             .addOnFailureListener { e ->
                 isSearching = false
-                Toast.makeText(context, "查詢失敗: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+                searchErrorMessage = "連線或查詢失敗: ${e.localizedMessage}"
+                Toast.makeText(context, searchErrorMessage, Toast.LENGTH_LONG).show()
             }
     }
 
@@ -315,7 +329,7 @@ fun GeoTrackApp() {
             val doc = hashMapOf(
                 "userId" to userEmail.substringBefore("@"),
                 "userEmail" to userEmail.trim(),
-                "tripCode" to if (index % 2 == 0) "INSPECT-0824-A" else "TRIP-NORTH-EXPRESS",
+                "tripCode" to "TAIPEI",
                 "location" to GeoPoint(lat, lng),
                 "timestamp" to cal.time,
                 "accuracy" to 3.5 + index,
@@ -328,8 +342,9 @@ fun GeoTrackApp() {
         batch.commit()
             .addOnSuccessListener {
                 isResettingData = false
-                Toast.makeText(context, "示範打卡資料已成功重設！", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "示範打卡資料 (TAIPEI) 已成功建立！", Toast.LENGTH_SHORT).show()
                 loadRecentCheckIns()
+                searchFirestoreRecords()
             }
             .addOnFailureListener {
                 isResettingData = false
@@ -694,7 +709,7 @@ fun GeoTrackApp() {
                                         value = tripCode,
                                         onValueChange = { tripCode = it.uppercase(Locale.ROOT) },
                                         label = { Text("行程代碼 (Trip Code)") },
-                                        placeholder = { Text("例: INSPECT-0824-A") },
+                                        placeholder = { Text("例: TAIPEI") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp)
@@ -937,26 +952,50 @@ fun GeoTrackApp() {
                                 Surface(
                                     shape = RoundedCornerShape(8.dp),
                                     color = Color(0xFFF7F2FA),
+                                    border = BorderStroke(1.dp, Color(0xFFE7E0EC)),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
                                             mapQueryEmail = "hermanntalk@gmail.com"
-                                            mapQueryTrip = "INSPECT-0824-A"
+                                            mapQueryTrip = "TAIPEI"
                                             searchFirestoreRecords()
                                         }
                                 ) {
                                     Row(
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
-                                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF6750A4), modifier = Modifier.size(14.dp))
+                                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF6750A4), modifier = Modifier.size(15.dp))
                                         Text(
-                                            text = "點此示範: hermanntalk@gmail.com 與 INSPECT-0824-A",
-                                            fontSize = 11.sp,
+                                            text = "輸入 hermanntalk@gmail.com 與 TAIPEI 看示範",
+                                            fontSize = 11.5.sp,
                                             color = Color(0xFF6750A4),
-                                            fontWeight = FontWeight.Medium
+                                            fontWeight = FontWeight.SemiBold
                                         )
+                                    }
+                                }
+
+                                if (searchErrorMessage != null) {
+                                    Surface(
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = Color(0xFFF9DEDC),
+                                        border = BorderStroke(1.dp, Color(0xFFB3261E).copy(alpha = 0.3f)),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(Icons.Default.Warning, contentDescription = null, tint = Color(0xFFB3261E), modifier = Modifier.size(14.dp))
+                                            Text(
+                                                text = searchErrorMessage ?: "",
+                                                fontSize = 11.sp,
+                                                color = Color(0xFF601410),
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -1163,6 +1202,10 @@ fun GeoTrackApp() {
                                             override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
                                                 super.onReceivedError(view, errorCode, description, failingUrl)
                                                 Log.e("GeoTrackMap", "WebView Error: $errorCode, $description, $failingUrl")
+                                            }
+                                            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
+                                                Log.w("GeoTrackMap", "SSL Error bypassed for map tiles: $error")
+                                                handler?.proceed()
                                             }
                                         }
                                         webChromeClient = object : WebChromeClient() {
