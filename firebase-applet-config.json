@@ -1,12 +1,12 @@
 {
-  "projectId": "symmetric-bonus-nc9s2",
-  "appId": "1:949094700104:web:143771016ac2f0e035b47d",
-  "apiKey": "AIzaSyAdHfR_16idXXPs-kEZ1VS54Vb7faVo77c",
-  "authDomain": "symmetric-bonus-nc9s2.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-geocheckinsuperv-2cf3b069-ea21-4713-bf0b-d0833f7f2c8e",
-  "storageBucket": "symmetric-bonus-nc9s2.firebasestorage.app",
-  "messagingSenderId": "949094700104",
+  "projectId": "geotrack-8e9b4",
+  "appId": "1:133122521568:web:536e3fd092a052f3995385",
+  "apiKey": "AIzaSyAETkn9tIEVifMr2_r6oAmW8Sg11eMs_Is",
+  "authDomain": "geotrack-8e9b4.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "geotrack-8e9b4.firebasestorage.app",
+  "messagingSenderId": "133122521568",
   "measurementId": "",
-  "oAuthClientId": "949094700104-ieu724qd6rtpk5mprfbmrgpbetp1nob6.apps.googleusercontent.com",
+  "oAuthClientId": "133122521568-vhu0j2bbcoktbqvb9d2f3dk9k44da6j5.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
                     .setApplicationId("1:133122521568:android:51d7db5ef2979686995385")
                     .setApiKey("AIzaSyBagcQG_7QSBvf0lSdYPmD4vH1VrOeToJY")
                     .setProjectId("geotrack-8e9b4")
-                    .setStorageBucket("geotrack-8e9b4.appspot.com")
+                    .setStorageBucket("geotrack-8e9b4.firebasestorage.app")
                     .build()
                 FirebaseApp.initializeApp(this, options)
             }
