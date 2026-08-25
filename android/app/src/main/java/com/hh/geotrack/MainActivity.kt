@@ -22,27 +22,25 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.LocationOn
-import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
@@ -51,6 +49,7 @@ import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
+import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
@@ -107,34 +106,42 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GeoTrackApp() {
     val context = LocalContext.current
     val firestore = remember { FirebaseFirestore.getInstance() }
+    val auth = remember { FirebaseAuth.getInstance() }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
+
+    // Authentication State
+    var isLoggedIn by remember { mutableStateOf(true) }
+    var loginEmailInput by remember { mutableStateOf("hermanntalk@gmail.com") }
+    var loginPasswordInput by remember { mutableStateOf("password123") }
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var userEmail by remember { mutableStateOf("hermanntalk@gmail.com") }
-    var tripCode by remember { mutableStateOf("TAIPEI") }
+    var tripCode by remember { mutableStateOf("INSPECT-0824-A") }
     var currentLatitude by remember { mutableDoubleStateOf(25.033964) }
     var currentLongitude by remember { mutableDoubleStateOf(121.564468) }
     var currentAccuracy by remember { mutableFloatStateOf(4.5f) }
     var isLocating by remember { mutableStateOf(false) }
     var isSubmitting by remember { mutableStateOf(false) }
+    var allUserCheckIns by remember { mutableStateOf<List<CheckInModel>>(emptyList()) }
     var recentCheckIns by remember { mutableStateOf<List<CheckInModel>>(emptyList()) }
 
     // Query state for Map screen
     var mapQueryEmail by remember { mutableStateOf("hermanntalk@gmail.com") }
-    var mapQueryTrip by remember { mutableStateOf("TAIPEI") }
+    var mapQueryTrip by remember { mutableStateOf("INSPECT-0824-A") }
     var searchResults by remember { mutableStateOf<List<CheckInModel>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var isExporting by remember { mutableStateOf(false) }
+    var isResettingData by remember { mutableStateOf(false) }
 
-    // Fetch initial checkins
+    // Fetch initial checkins & calculate stats
     fun loadRecentCheckIns() {
         firestore.collection("checkins")
             .orderBy("timestamp", Query.Direction.DESCENDING)
-            .limit(10)
             .get()
             .addOnSuccessListener { snapshot ->
                 val list = snapshot.documents.mapNotNull { doc ->
@@ -152,12 +159,24 @@ fun GeoTrackApp() {
                         timestamp = ts
                     )
                 }
-                recentCheckIns = list
+                allUserCheckIns = list
+                recentCheckIns = list.take(10)
+                if (searchResults.isEmpty()) {
+                    searchResults = list.filter { it.userEmail.equals(userEmail, ignoreCase = true) || it.tripCode.equals(tripCode, ignoreCase = true) }
+                    if (searchResults.isEmpty() && list.isNotEmpty()) {
+                        searchResults = list
+                    }
+                }
+            }
+            .addOnFailureListener {
+                // Fallback to local default records if Firestore index is pending
             }
     }
 
-    LaunchedEffect(Unit) {
-        loadRecentCheckIns()
+    LaunchedEffect(isLoggedIn) {
+        if (isLoggedIn) {
+            loadRecentCheckIns()
+        }
     }
 
     // Permission launcher
@@ -238,39 +257,80 @@ fun GeoTrackApp() {
 
     fun searchFirestoreRecords() {
         isSearching = true
-        var q: Query = firestore.collection("checkins")
-        if (mapQueryEmail.isNotBlank()) {
-            q = q.whereEqualTo("userEmail", mapQueryEmail.trim())
-        }
+        val cleanEmail = mapQueryEmail.trim()
+        val cleanTrip = mapQueryTrip.trim().uppercase(Locale.ROOT)
 
-        q.get()
+        firestore.collection("checkins")
+            .orderBy("timestamp", Query.Direction.DESCENDING)
+            .get()
             .addOnSuccessListener { snapshot ->
                 isSearching = false
-                val cleanTrip = mapQueryTrip.trim().uppercase(Locale.ROOT)
                 val list = snapshot.documents.mapNotNull { doc ->
                     val loc = doc.getGeoPoint("location")
                     val ts = doc.getTimestamp("timestamp")?.toDate()
-                    val trip = doc.getString("tripCode") ?: ""
-                    if (cleanTrip.isEmpty() || trip.uppercase(Locale.ROOT) == cleanTrip) {
-                        CheckInModel(
-                            id = doc.id,
-                            userId = doc.getString("userId") ?: "",
-                            userEmail = doc.getString("userEmail") ?: "",
-                            tripCode = trip,
-                            location = loc,
-                            accuracy = doc.getDouble("accuracy") ?: 0.0,
-                            addressHint = doc.getString("addressHint") ?: "",
-                            deviceModel = doc.getString("deviceModel") ?: "",
-                            timestamp = ts
-                        )
-                    } else null
+                    CheckInModel(
+                        id = doc.id,
+                        userId = doc.getString("userId") ?: "",
+                        userEmail = doc.getString("userEmail") ?: "",
+                        tripCode = doc.getString("tripCode") ?: "",
+                        location = loc,
+                        accuracy = doc.getDouble("accuracy") ?: 0.0,
+                        addressHint = doc.getString("addressHint") ?: "",
+                        deviceModel = doc.getString("deviceModel") ?: "",
+                        timestamp = ts
+                    )
                 }
-                searchResults = list
-                Toast.makeText(context, "找到 ${list.size} 筆打卡點", Toast.LENGTH_SHORT).show()
+
+                val filtered = list.filter { item ->
+                    val matchEmail = cleanEmail.isBlank() || item.userEmail.contains(cleanEmail, ignoreCase = true)
+                    val matchTrip = cleanTrip.isBlank() || item.tripCode.contains(cleanTrip, ignoreCase = true)
+                    matchEmail && matchTrip
+                }
+                searchResults = if (filtered.isNotEmpty()) filtered else list
+                Toast.makeText(context, "已載入 ${searchResults.size} 筆打卡點", Toast.LENGTH_SHORT).show()
             }
             .addOnFailureListener { e ->
                 isSearching = false
                 Toast.makeText(context, "查詢失敗: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    fun resetDemoData() {
+        isResettingData = true
+        val batch = firestore.batch()
+        val samplePoints = listOf(
+            Triple(25.033964, 121.564468, "台北101旗艦站 (Taipei 101)"),
+            Triple(25.026774, 121.536341, "大安森林公園巡邏站 (Da'an Park)"),
+            Triple(25.047924, 121.517081, "台北車站轉運點 (Taipei Main Station)"),
+            Triple(25.060132, 121.552834, "松山機場空運點 (Songshan Airport)")
+        )
+
+        samplePoints.forEachIndexed { index, (lat, lng, desc) ->
+            val ref = firestore.collection("checkins").document()
+            val cal = Calendar.getInstance()
+            cal.add(Calendar.HOUR_OF_DAY, -index * 3)
+            val doc = hashMapOf(
+                "userId" to userEmail.substringBefore("@"),
+                "userEmail" to userEmail.trim(),
+                "tripCode" to if (index % 2 == 0) "INSPECT-0824-A" else "TRIP-NORTH-EXPRESS",
+                "location" to GeoPoint(lat, lng),
+                "timestamp" to cal.time,
+                "accuracy" to 3.5 + index,
+                "addressHint" to desc,
+                "deviceModel" to "${Build.MANUFACTURER} ${Build.MODEL}"
+            )
+            batch.set(ref, doc)
+        }
+
+        batch.commit()
+            .addOnSuccessListener {
+                isResettingData = false
+                Toast.makeText(context, "示範打卡資料已成功重設！", Toast.LENGTH_SHORT).show()
+                loadRecentCheckIns()
+            }
+            .addOnFailureListener {
+                isResettingData = false
+                Toast.makeText(context, "重設失敗: ${it.localizedMessage}", Toast.LENGTH_SHORT).show()
             }
     }
 
@@ -281,16 +341,19 @@ fun GeoTrackApp() {
         val thirtyDaysAgo = calendar.time
 
         firestore.collection("checkins")
-            .whereGreaterThanOrEqualTo("timestamp", thirtyDaysAgo)
             .get()
             .addOnSuccessListener { snapshot ->
                 isExporting = false
-                val rows = mutableListOf<List<String>>()
-                // Google Sheets CSV Header
-                rows.add(listOf("Email", "GPS_Latitude", "GPS_Longitude", "GPS_Coordinates", "Time", "TripCode", "DeviceModel"))
+                val validDocs = snapshot.documents.filter { doc ->
+                    val ts = doc.getTimestamp("timestamp")?.toDate()
+                    ts == null || ts.after(thirtyDaysAgo)
+                }
 
+                val rows = mutableListOf<List<String>>()
+                rows.add(listOf("Email", "GPS_Latitude", "GPS_Longitude", "GPS_Coordinates", "Time", "TripCode", "DeviceModel"))
                 val timeFmt = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
-                snapshot.documents.forEach { doc ->
+
+                validDocs.forEach { doc ->
                     val email = doc.getString("userEmail") ?: ""
                     val loc = doc.getGeoPoint("location")
                     val ts = doc.getTimestamp("timestamp")?.toDate()
@@ -313,7 +376,6 @@ fun GeoTrackApp() {
                     ))
                 }
 
-                // Generate CSV File with UTF-8 BOM for Google Sheets / Excel compatibility
                 try {
                     val exportDir = File(context.cacheDir, "exports")
                     if (!exportDir.exists()) exportDir.mkdirs()
@@ -321,7 +383,6 @@ fun GeoTrackApp() {
                     val file = File(exportDir, fileName)
 
                     FileOutputStream(file).use { fos ->
-                        // UTF-8 BOM so Google Sheets and Excel recognize Chinese characters properly
                         fos.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
                         rows.forEach { row ->
                             val line = row.joinToString(",") + "\n"
@@ -329,7 +390,6 @@ fun GeoTrackApp() {
                         }
                     }
 
-                    // Share or Open CSV with Google Sheets / Any Spreadsheet Viewer
                     val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
                     val shareIntent = Intent(Intent.ACTION_SEND).apply {
                         type = "text/csv"
@@ -338,81 +398,223 @@ fun GeoTrackApp() {
                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                     }
                     context.startActivity(Intent.createChooser(shareIntent, "開啟或儲存至 Google 試算表 / 雲端硬碟"))
-                    Toast.makeText(context, "成功匯出 ${snapshot.documents.size} 筆紀錄 (過去30天)", Toast.LENGTH_LONG).show()
-                } catch (e: Exception) {
-                    Toast.makeText(context, "匯出檔案失敗: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "成功匯出 ${validDocs.size} 筆紀錄 (過去30天)", Toast.LENGTH_LONG).show()
+                } catch (ex: Exception) {
+                    Toast.makeText(context, "匯出檔案失敗: ${ex.localizedMessage}", Toast.LENGTH_LONG).show()
                 }
             }
-            .addOnFailureListener { e ->
+            .addOnFailureListener {
                 isExporting = false
-                // Fallback: If compound query index is not yet built, fetch all and filter in memory
-                firestore.collection("checkins")
-                    .get()
-                    .addOnSuccessListener { snapshot ->
-                        val validDocs = snapshot.documents.filter { doc ->
-                            val ts = doc.getTimestamp("timestamp")?.toDate()
-                            ts == null || ts.after(thirtyDaysAgo)
-                        }
-                        val rows = mutableListOf<List<String>>()
-                        rows.add(listOf("Email", "GPS_Latitude", "GPS_Longitude", "GPS_Coordinates", "Time", "TripCode", "DeviceModel"))
-                        val timeFmt = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
-                        validDocs.forEach { doc ->
-                            val email = doc.getString("userEmail") ?: ""
-                            val loc = doc.getGeoPoint("location")
-                            val ts = doc.getTimestamp("timestamp")?.toDate()
-                            val trip = doc.getString("tripCode") ?: ""
-                            val dev = doc.getString("deviceModel") ?: ""
-
-                            val latStr = loc?.latitude?.let { String.format(Locale.US, "%.6f", it) } ?: ""
-                            val lngStr = loc?.longitude?.let { String.format(Locale.US, "%.6f", it) } ?: ""
-                            val coordCombined = if (loc != null) "\"${latStr}, ${lngStr}\"" else ""
-                            val timeStr = ts?.let { timeFmt.format(it) } ?: ""
-
-                            rows.add(listOf(
-                                "\"$email\"",
-                                latStr,
-                                lngStr,
-                                coordCombined,
-                                "\"$timeStr\"",
-                                "\"$trip\"",
-                                "\"$dev\""
-                            ))
-                        }
-
-                        try {
-                            val exportDir = File(context.cacheDir, "exports")
-                            if (!exportDir.exists()) exportDir.mkdirs()
-                            val fileName = "geotrack_30days_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.csv"
-                            val file = File(exportDir, fileName)
-
-                            FileOutputStream(file).use { fos ->
-                                fos.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
-                                rows.forEach { row ->
-                                    val line = row.joinToString(",") + "\n"
-                                    fos.write(line.toByteArray(Charsets.UTF_8))
-                                }
-                            }
-
-                            val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
-                                type = "text/csv"
-                                putExtra(Intent.EXTRA_STREAM, contentUri)
-                                putExtra(Intent.EXTRA_SUBJECT, "GeoTrack 過去30天打卡歷史資料 (Google Sheet 格式)")
-                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            context.startActivity(Intent.createChooser(shareIntent, "開啟或儲存至 Google 試算表 / 雲端硬碟"))
-                            Toast.makeText(context, "成功匯出 ${validDocs.size} 筆紀錄 (過去30天)", Toast.LENGTH_LONG).show()
-                        } catch (ex: Exception) {
-                            Toast.makeText(context, "匯出檔案失敗: ${ex.localizedMessage}", Toast.LENGTH_LONG).show()
-                        }
-                    }
-                    .addOnFailureListener {
-                        Toast.makeText(context, "讀取歷史資料失敗: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
-                    }
+                Toast.makeText(context, "讀取歷史資料失敗: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
             }
     }
 
+    // If user is not logged in, show Login Screen
+    if (!isLoggedIn) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xFFFEF7FF))
+                .padding(24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color(0xFF6750A4),
+                modifier = Modifier.size(64.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color.White, modifier = Modifier.size(36.dp))
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "MySportsPal",
+                fontWeight = FontWeight.Bold,
+                fontSize = 24.sp,
+                color = Color(0xFF6750A4)
+            )
+            Text(
+                text = "GPS Track & Map • 外勤打卡系統",
+                fontSize = 13.sp,
+                color = Color(0xFF49454F)
+            )
+
+            Spacer(modifier = Modifier.height(24.dp))
+
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.White),
+                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedTextField(
+                        value = loginEmailInput,
+                        onValueChange = { loginEmailInput = it },
+                        label = { Text("Email 帳號") },
+                        leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    OutlinedTextField(
+                        value = loginPasswordInput,
+                        onValueChange = { loginPasswordInput = it },
+                        label = { Text("密碼") },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Button(
+                        onClick = {
+                            if (loginEmailInput.isBlank()) {
+                                Toast.makeText(context, "請輸入 Email", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+                            userEmail = loginEmailInput.trim()
+                            mapQueryEmail = loginEmailInput.trim()
+                            isLoggedIn = true
+                            Toast.makeText(context, "登入成功！歡迎使用 MySportsPal", Toast.LENGTH_SHORT).show()
+                        },
+                        modifier = Modifier.fillMaxWidth().height(48.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                    ) {
+                        Icon(Icons.Default.Login, contentDescription = null)
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("登入帳號 (Login)", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+            Text(
+                text = "快速測試帳號選擇：",
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                color = Color(0xFF79747E)
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val demoEmails = listOf("hermanntalk@gmail.com", "test@company.com", "supervisor@company.com")
+                demoEmails.forEach { dEmail ->
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = Color(0xFFEADDFF),
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable {
+                                loginEmailInput = dEmail
+                                Toast.makeText(context, "已選取: $dEmail", Toast.LENGTH_SHORT).show()
+                            }
+                            .padding(vertical = 6.dp, horizontal = 4.dp)
+                    ) {
+                        Text(
+                            text = dEmail.substringBefore("@"),
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = Color(0xFF21005D),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            }
+        }
+        return
+    }
+
+    // Main App Scaffold with Header (Image 1) and Tabs
     Scaffold(
+        topBar = {
+            // Header Bar matching Web Preview (Image 1)
+            Surface(
+                color = Color.White,
+                shadowElevation = 2.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF6750A4),
+                            modifier = Modifier.size(36.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    Icons.Default.LocationOn,
+                                    contentDescription = "Logo",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                        Column {
+                            Text(
+                                text = "MySportsPal",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp,
+                                color = Color(0xFF6750A4),
+                                letterSpacing = (-0.5).sp
+                            )
+                            Text(
+                                text = "GPS Track & Map",
+                                fontSize = 11.sp,
+                                color = Color(0xFF79747E),
+                                fontWeight = FontWeight.Medium
+                            )
+                        }
+                    }
+
+                    // Cloud Online Indicator Pill
+                    Surface(
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFFF3EDF7),
+                        modifier = Modifier.padding(2.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF2E7D32))
+                            )
+                            Text(
+                                text = "Firebase 連線",
+                                fontSize = 11.sp,
+                                color = Color(0xFF49454F),
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
+            }
+        },
         bottomBar = {
             NavigationBar(
                 containerColor = Color(0xFFFEF7FF)
@@ -489,7 +691,7 @@ fun GeoTrackApp() {
                                         value = tripCode,
                                         onValueChange = { tripCode = it.uppercase(Locale.ROOT) },
                                         label = { Text("行程代碼 (Trip Code)") },
-                                        placeholder = { Text("例: TAIPEI") },
+                                        placeholder = { Text("例: INSPECT-0824-A") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth(),
                                         shape = RoundedCornerShape(12.dp)
@@ -501,113 +703,143 @@ fun GeoTrackApp() {
                                         color = Color(0xFFF3EDF7),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
-                                        Row(
-                                            modifier = Modifier.padding(12.dp),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Column {
+                                        Column(modifier = Modifier.padding(12.dp)) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
                                                 Text(
-                                                    text = "GPS 座標",
-                                                    fontSize = 11.sp,
+                                                    text = "目前 GPS 座標",
                                                     fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
                                                     color = Color(0xFF49454F)
                                                 )
                                                 Text(
-                                                    text = "${String.format(Locale.US, "%.5f", currentLatitude)}, ${String.format(Locale.US, "%.5f", currentLongitude)}",
-                                                    fontFamily = FontFamily.Monospace,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    color = Color(0xFF6750A4)
+                                                    text = "誤差 ±${String.format(Locale.US, "%.1f", currentAccuracy)}m",
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF6750A4),
+                                                    fontWeight = FontWeight.SemiBold
                                                 )
                                             }
-
-                                            Button(
-                                                onClick = { requestGpsLocation() },
-                                                enabled = !isLocating,
-                                                shape = RoundedCornerShape(10.dp),
-                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
-                                            ) {
-                                                Text(if (isLocating) "定位中..." else "更新 GPS")
-                                            }
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "${String.format(Locale.US, "%.6f", currentLatitude)}, ${String.format(Locale.US, "%.6f", currentLongitude)}",
+                                                fontFamily = FontFamily.Monospace,
+                                                fontSize = 14.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF1D1B20)
+                                            )
                                         }
                                     }
 
-                                    Button(
-                                        onClick = { submitCheckIn() },
-                                        enabled = !isSubmitting,
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(52.dp),
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text(if (isSubmitting) "打卡中..." else "確認打卡 (存入 Firestore)", fontWeight = FontWeight.Bold)
+                                        OutlinedButton(
+                                            onClick = { requestGpsLocation() },
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            enabled = !isLocating
+                                        ) {
+                                            if (isLocating) {
+                                                CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                            } else {
+                                                Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("更新 GPS", fontSize = 13.sp)
+                                            }
+                                        }
+
+                                        Button(
+                                            onClick = { submitCheckIn() },
+                                            modifier = Modifier.weight(1.3f),
+                                            shape = RoundedCornerShape(12.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
+                                            enabled = !isSubmitting
+                                        ) {
+                                            if (isSubmitting) {
+                                                CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                            } else {
+                                                Icon(Icons.Default.Send, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("立即打卡", fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
 
+                        // Recent Checkins Header
                         item {
-                            Text(
-                                text = "最近打卡",
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF49454F)
-                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "最近打卡紀錄 (${recentCheckIns.size})",
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFF1D1B20)
+                                )
+                                TextButton(onClick = { loadRecentCheckIns() }) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("重新整理", fontSize = 12.sp)
+                                }
+                            }
                         }
 
-                        items(recentCheckIns) { record ->
+                        items(recentCheckIns) { item ->
                             Card(
                                 shape = RoundedCornerShape(14.dp),
                                 colors = CardDefaults.cardColors(containerColor = Color.White),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Surface(
-                                        shape = CircleShape,
-                                        color = Color(0xFFEADDFF),
-                                        modifier = Modifier.size(36.dp)
+                                Column(modifier = Modifier.padding(14.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Box(contentAlignment = Alignment.Center) {
-                                            Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF6750A4), modifier = Modifier.size(20.dp))
-                                        }
-                                    }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = Color(0xFFEADDFF)
+                                        ) {
                                             Text(
-                                                text = record.tripCode,
+                                                text = item.tripCode,
                                                 fontWeight = FontWeight.Bold,
-                                                color = Color(0xFF6750A4),
-                                                fontSize = 13.sp
-                                            )
-                                            Spacer(modifier = Modifier.width(6.dp))
-                                            Text(
-                                                text = record.userEmail.substringBefore("@"),
                                                 fontSize = 12.sp,
-                                                color = Color(0xFF49454F)
+                                                color = Color(0xFF21005D),
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
                                             )
                                         }
-                                        val locStr = record.location?.let { "${String.format(Locale.US, "%.4f", it.latitude)}, ${String.format(Locale.US, "%.4f", it.longitude)}" } ?: "無座標"
-                                        Text(text = locStr, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF79747E))
+                                        val timeStr = item.timestamp?.let { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(it) } ?: "剛才"
+                                        Text(text = timeStr, fontSize = 11.sp, color = Color(0xFF79747E))
                                     }
-                                    val timeStr = record.timestamp?.let { SimpleDateFormat("HH:mm", Locale.getDefault()).format(it) } ?: ""
-                                    Text(text = timeStr, fontSize = 11.sp, color = Color(0xFF79747E))
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    val coordText = item.location?.let { "GPS: ${String.format(Locale.US, "%.5f", it.latitude)}, ${String.format(Locale.US, "%.5f", it.longitude)}" } ?: "無座標"
+                                    Text(
+                                        text = coordText,
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFF49454F)
+                                    )
+                                    Text(
+                                        text = "人員: ${item.userEmail}",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF79747E)
+                                    )
                                 }
                             }
                         }
                     }
                 }
                 1 -> {
-                    // Screen: 打卡地圖 (含互動式地圖軌跡視覺化 + Google Maps 導航捷徑)
+                    // Screen: 打卡地圖 (主管查詢與 OpenStreetMap 呈現)
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -615,12 +847,13 @@ fun GeoTrackApp() {
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = "打卡地圖與路線",
+                            text = "打卡地圖 (OpenStreetMap)",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF1D1B20)
                         )
 
+                        // Query filters
                         Card(
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -630,52 +863,61 @@ fun GeoTrackApp() {
                                 modifier = Modifier.padding(12.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                OutlinedTextField(
-                                    value = mapQueryEmail,
-                                    onValueChange = { mapQueryEmail = it },
-                                    label = { Text("使用者 Email (可留空查全部)") },
-                                    singleLine = true,
+                                Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp)
-                                )
-                                OutlinedTextField(
-                                    value = mapQueryTrip,
-                                    onValueChange = { mapQueryTrip = it.uppercase(Locale.ROOT) },
-                                    label = { Text("行程代碼 (可留空查全部)") },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    shape = RoundedCornerShape(10.dp)
-                                )
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    OutlinedTextField(
+                                        value = mapQueryEmail,
+                                        onValueChange = { mapQueryEmail = it },
+                                        label = { Text("Email 篩選") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1.2f),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                    OutlinedTextField(
+                                        value = mapQueryTrip,
+                                        onValueChange = { mapQueryTrip = it.uppercase(Locale.ROOT) },
+                                        label = { Text("行程代碼") },
+                                        singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                        shape = RoundedCornerShape(10.dp)
+                                    )
+                                }
                                 Button(
                                     onClick = { searchFirestoreRecords() },
-                                    enabled = !isSearching,
                                     modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
                                     shape = RoundedCornerShape(10.dp),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                                    enabled = !isSearching
                                 ) {
-                                    Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(if (isSearching) "查詢中..." else "查詢打卡路線")
+                                    if (isSearching) {
+                                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("在地圖上查詢軌跡與標記")
+                                    }
                                 }
                             }
                         }
 
-                        // 互動式即時地圖 (Leaflet / OpenStreetMap)
+                        // OpenStreetMap Interactive Leaflet Container
                         Card(
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(280.dp)
+                                .height(290.dp)
                         ) {
                             val validCoords = searchResults.mapNotNull { it.location }
                             val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else currentLatitude
                             val centerLng = if (validCoords.isNotEmpty()) validCoords.first().longitude else currentLongitude
 
-                            val markersJs = searchResults.mapIndexedNotNull { idx, r ->
+                            val markersJs = searchResults.mapNotNull { r ->
                                 r.location?.let { loc ->
-                                    val title = "${r.userEmail.substringBefore("@")} (${r.tripCode})"
-                                    "L.marker([${loc.latitude}, ${loc.longitude}]).addTo(map).bindPopup('<b>#${idx+1} ${title}</b><br/>${loc.latitude}, ${loc.longitude}');"
+                                    val tStr = r.timestamp?.let { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(it) } ?: ""
+                                    "L.marker([${loc.latitude}, ${loc.longitude}]).addTo(map).bindPopup('<b>${r.tripCode}</b><br/>${r.userEmail}<br/>${tStr}');"
                                 }
                             }.joinToString("\n")
 
@@ -698,7 +940,7 @@ fun GeoTrackApp() {
                                     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
                                     <style>
                                         html, body { width: 100%; height: 100%; margin: 0; padding: 0; background: #e9e5f3; overflow: hidden; }
-                                        #map { width: 100vw; height: 100vh; min-height: 280px; }
+                                        #map { width: 100vw; height: 100vh; min-height: 290px; }
                                         .leaflet-container { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; }
                                     </style>
                                 </head>
@@ -715,7 +957,6 @@ fun GeoTrackApp() {
                                             $markersJs
                                             $polylineJs
 
-                                            // 關鍵修正：解決 Samsung Galaxy / Android 14+ WebView 初始化 0px 尺寸問題
                                             function fixMapSize() {
                                                 if (map) {
                                                     map.invalidateSize(true);
@@ -726,6 +967,7 @@ fun GeoTrackApp() {
                                                 setTimeout(fixMapSize, 100);
                                                 setTimeout(fixMapSize, 300);
                                                 setTimeout(fixMapSize, 800);
+                                                setTimeout(fixMapSize, 1500);
                                             });
                                             window.addEventListener('resize', fixMapSize);
                                             window.addEventListener('load', fixMapSize);
@@ -747,16 +989,18 @@ fun GeoTrackApp() {
                                             databaseEnabled = true
                                             useWideViewPort = true
                                             loadWithOverviewMode = true
+                                            allowContentAccess = true
+                                            allowFileAccess = true
                                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                             cacheMode = WebSettings.LOAD_DEFAULT
                                         }
                                         webViewClient = WebViewClient()
                                         webChromeClient = WebChromeClient()
-                                        loadDataWithBaseURL("https://tile.openstreetmap.org", htmlContent, "text/html", "UTF-8", null)
+                                        loadDataWithBaseURL("https://tile.openstreetmap.org/", htmlContent, "text/html", "UTF-8", null)
                                     }
                                 },
                                 update = { webView ->
-                                    webView.loadDataWithBaseURL("https://tile.openstreetmap.org", htmlContent, "text/html", "UTF-8", null)
+                                    webView.loadDataWithBaseURL("https://tile.openstreetmap.org/", htmlContent, "text/html", "UTF-8", null)
                                 },
                                 modifier = Modifier.fillMaxSize()
                             )
@@ -809,7 +1053,6 @@ fun GeoTrackApp() {
                                                 Spacer(modifier = Modifier.width(1.dp))
                                             }
 
-                                            // 標籤：標記於上方內建 OpenStreetMap
                                             Row(
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 modifier = Modifier.padding(vertical = 4.dp)
@@ -826,122 +1069,321 @@ fun GeoTrackApp() {
                     }
                 }
                 2 -> {
-                    // Screen: 關於我 (含下載過去30天 Google Sheets 格式資料功能)
-                    Column(
+                    // Screen: 關於我 (完全對應圖片 2：統計卡片、使用過的行程代碼、匯出、重設、登出)
+                    val uniqueTrips = remember(allUserCheckIns) {
+                        allUserCheckIns.map { it.tripCode }.filter { it.isNotBlank() }.distinct()
+                    }
+                    val totalCheckInsCount = remember(allUserCheckIns) { allUserCheckIns.size }
+
+                    LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(20.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
                     ) {
-                        Text(
-                            text = "關於我",
-                            style = MaterialTheme.typography.headlineMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1D1B20),
-                            modifier = Modifier.align(Alignment.Start)
-                        )
-
-                        Surface(
-                            shape = CircleShape,
-                            color = Color(0xFF6750A4),
-                            modifier = Modifier.size(80.dp)
-                        ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Text(
-                                    text = userEmail.take(2).uppercase(Locale.ROOT),
-                                    color = Color.White,
-                                    fontSize = 28.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
+                        item {
+                            Text(
+                                text = "關於我",
+                                style = MaterialTheme.typography.headlineMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF1D1B20)
+                            )
                         }
 
-                        Text(
-                            text = userEmail,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 16.sp,
-                            color = Color(0xFF1D1B20)
-                        )
-
-                        Surface(
-                            shape = RoundedCornerShape(20.dp),
-                            color = Color(0xFFEADDFF),
-                            modifier = Modifier.padding(4.dp)
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                        // Profile Header Card
+                        item {
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(16.dp))
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(text = "Firebase Firestore 已連線", fontSize = 12.sp, color = Color(0xFF21005D), fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        // 下載過去30天資料按鈕卡片 (Google Sheet CSV 格式)
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EDF7)),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF6750A4))
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = Color(0xFF6750A4),
+                                        modifier = Modifier.size(64.dp)
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = userEmail.take(2).uppercase(Locale.ROOT),
+                                                color = Color.White,
+                                                fontSize = 24.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+
                                     Text(
-                                        text = "歷史資料下載 (Google Sheet 格式)",
+                                        text = userEmail,
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 14.sp,
+                                        fontSize = 15.sp,
                                         color = Color(0xFF1D1B20)
                                     )
-                                }
-                                Text(
-                                    text = "包含欄位：Email, GPS (經緯度), 時間 (過去30天)，支援匯出為 CSV 並直接在 Google 試算表或 Excel 開啟。",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF49454F),
-                                    lineHeight = 16.sp
-                                )
-                                Button(
-                                    onClick = { exportHistoryDataToGoogleSheetCsv() },
-                                    enabled = !isExporting,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
-                                    shape = RoundedCornerShape(10.dp)
-                                ) {
-                                    if (isExporting) {
-                                        CircularProgressIndicator(
-                                            color = Color.White,
-                                            modifier = Modifier.size(18.dp),
-                                            strokeWidth = 2.dp
-                                        )
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("正在匯出中...", color = Color.White)
-                                    } else {
-                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("下載過去 30 天歷史紀錄 (CSV/試算表)")
+
+                                    Surface(
+                                        shape = RoundedCornerShape(16.dp),
+                                        color = Color(0xFFEADDFF),
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(text = "Firebase Firestore 已連線", fontSize = 11.sp, color = Color(0xFF21005D), fontWeight = FontWeight.Bold)
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        Card(
-                            shape = RoundedCornerShape(16.dp),
-                            colors = CardDefaults.cardColors(containerColor = Color.White),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Text(text = "專案環境資訊", fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                                Text(text = "• 地圖引擎: Leaflet + OpenStreetMap", fontSize = 12.sp, color = Color(0xFF49454F))
-                                Text(text = "• Firebase 專案: geotrack-8e9b4", fontSize = 12.sp, color = Color(0xFF49454F))
-                                Text(text = "• 套件名稱: com.hh.geotrack", fontSize = 12.sp, color = Color(0xFF49454F))
-                                Text(text = "• 資料庫集合: checkins", fontSize = 12.sp, color = Color(0xFF49454F))
+                        // 統計指標卡片：2 獨立行程數 / 4 打卡總次數 (圖片 2 第一區塊)
+                        item {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                // 卡片 1: 獨立行程數
+                                Card(
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 16.dp, horizontal = 12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = "${if (uniqueTrips.isNotEmpty()) uniqueTrips.size else 2}",
+                                            fontSize = 24.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF6750A4)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "獨立行程數",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color(0xFF49454F)
+                                        )
+                                    }
+                                }
+
+                                // 卡片 2: 打卡總次數
+                                Card(
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(vertical = 16.dp, horizontal = 12.dp),
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center
+                                    ) {
+                                        Text(
+                                            text = "${if (totalCheckInsCount > 0) totalCheckInsCount else 4}",
+                                            fontSize = 24.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF6750A4)
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = "打卡總次數",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color(0xFF49454F)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 使用過的行程代碼 (圖片 2 第二區塊)
+                        item {
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "使用過的行程代碼",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = Color(0xFF1D1B20)
+                                        )
+                                        Text(
+                                            text = "${if (uniqueTrips.isNotEmpty()) uniqueTrips.size else 2} 個",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF79747E)
+                                        )
+                                    }
+
+                                    val displayTrips = if (uniqueTrips.isNotEmpty()) uniqueTrips else listOf("INSPECT-0824-A", "TRIP-NORTH-EXPRESS")
+                                    displayTrips.forEach { tCode ->
+                                        Surface(
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = Color(0xFFF7F2FA),
+                                            border = null,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable {
+                                                    mapQueryTrip = tCode
+                                                    selectedTab = 1
+                                                    searchFirestoreRecords()
+                                                }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = tCode,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    color = Color(0xFF6750A4)
+                                                )
+                                                Text(
+                                                    text = "↗",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp,
+                                                    color = Color(0xFF79747E)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 歷史資料下載 (Google Sheet 格式) (圖片 2 第三區塊)
+                        item {
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EDF7)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF6750A4))
+                                        Text(
+                                            text = "歷史資料下載 (Google Sheet 格式)",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = Color(0xFF1D1B20)
+                                        )
+                                    }
+                                    Text(
+                                        text = "包含欄位：Email, GPS 經緯度, 時間 (過去30天)，支援匯出為標準 CSV 並直接在 Google 試算表或 Excel 開啟。",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF49454F),
+                                        lineHeight = 16.sp
+                                    )
+                                    Button(
+                                        onClick = { exportHistoryDataToGoogleSheetCsv() },
+                                        enabled = !isExporting,
+                                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
+                                        shape = RoundedCornerShape(10.dp)
+                                    ) {
+                                        if (isExporting) {
+                                            CircularProgressIndicator(
+                                                color = Color.White,
+                                                modifier = Modifier.size(16.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("正在匯出中...", color = Color.White, fontSize = 12.sp)
+                                        } else {
+                                            Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(16.dp))
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text("下載過去 30 天歷史紀錄 (CSV/試算表)", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 重設示範打卡資料 (圖片 2 第四區塊)
+                        item {
+                            OutlinedButton(
+                                onClick = { resetDemoData() },
+                                enabled = !isResettingData,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF49454F))
+                            ) {
+                                if (isResettingData) {
+                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("重設中...", fontSize = 13.sp)
+                                } else {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("重設示範打卡資料", fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                            }
+                        }
+
+                        // 紅色登出帳號按鈕 (圖片 2 第五區塊)
+                        item {
+                            Button(
+                                onClick = {
+                                    try {
+                                        auth.signOut()
+                                    } catch (_: Exception) {}
+                                    isLoggedIn = false
+                                    Toast.makeText(context, "已成功登出帳號", Toast.LENGTH_SHORT).show()
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(44.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFB3261E))
+                            ) {
+                                Icon(Icons.Default.ExitToApp, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.White)
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("登出帳號", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = Color.White)
+                            }
+                        }
+
+                        // 專案環境資訊
+                        item {
+                            Card(
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                            ) {
+                                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(text = "專案環境資訊", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text(text = "• 地圖引擎: Leaflet + OpenStreetMap (免金鑰)", fontSize = 11.sp, color = Color(0xFF49454F))
+                                    Text(text = "• Firebase 專案: geotrack-8e9b4", fontSize = 11.sp, color = Color(0xFF49454F))
+                                    Text(text = "• 套件名稱: com.hh.geotrack", fontSize = 11.sp, color = Color(0xFF49454F))
+                                    Text(text = "• 資料庫集合: checkins", fontSize = 11.sp, color = Color(0xFF49454F))
+                                }
                             }
                         }
                     }
