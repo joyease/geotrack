@@ -5,6 +5,14 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.os.Build
 import android.os.Bundle
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.net.Uri
+import android.content.Intent
+import androidx.core.content.FileProvider
+import java.io.File
+import java.io.FileOutputStream
+import androidx.compose.ui.viewinterop.AndroidView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -18,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
@@ -116,6 +125,7 @@ fun GeoTrackApp() {
     var mapQueryTrip by remember { mutableStateOf("TAIPEI") }
     var searchResults by remember { mutableStateOf<List<CheckInModel>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
+    var isExporting by remember { mutableStateOf(false) }
 
     // Fetch initial checkins
     fun loadRecentCheckIns() {
@@ -258,6 +268,144 @@ fun GeoTrackApp() {
             .addOnFailureListener { e ->
                 isSearching = false
                 Toast.makeText(context, "查詢失敗: ${e.localizedMessage}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    fun exportHistoryDataToGoogleSheetCsv() {
+        isExporting = true
+        val calendar = Calendar.getInstance()
+        calendar.add(Calendar.DAY_OF_YEAR, -30)
+        val thirtyDaysAgo = calendar.time
+
+        firestore.collection("checkins")
+            .whereGreaterThanOrEqualTo("timestamp", thirtyDaysAgo)
+            .get()
+            .addOnSuccessListener { snapshot ->
+                isExporting = false
+                val rows = mutableListOf<List<String>>()
+                // Google Sheets CSV Header
+                rows.add(listOf("Email", "GPS_Latitude", "GPS_Longitude", "GPS_Coordinates", "Time", "TripCode", "DeviceModel"))
+
+                val timeFmt = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
+                snapshot.documents.forEach { doc ->
+                    val email = doc.getString("userEmail") ?: ""
+                    val loc = doc.getGeoPoint("location")
+                    val ts = doc.getTimestamp("timestamp")?.toDate()
+                    val trip = doc.getString("tripCode") ?: ""
+                    val dev = doc.getString("deviceModel") ?: ""
+
+                    val latStr = loc?.latitude?.let { String.format(Locale.US, "%.6f", it) } ?: ""
+                    val lngStr = loc?.longitude?.let { String.format(Locale.US, "%.6f", it) } ?: ""
+                    val coordCombined = if (loc != null) "\"${latStr}, ${lngStr}\"" else ""
+                    val timeStr = ts?.let { timeFmt.format(it) } ?: ""
+
+                    rows.add(listOf(
+                        "\"$email\"",
+                        latStr,
+                        lngStr,
+                        coordCombined,
+                        "\"$timeStr\"",
+                        "\"$trip\"",
+                        "\"$dev\""
+                    ))
+                }
+
+                // Generate CSV File with UTF-8 BOM for Google Sheets / Excel compatibility
+                try {
+                    val exportDir = File(context.cacheDir, "exports")
+                    if (!exportDir.exists()) exportDir.mkdirs()
+                    val fileName = "geotrack_30days_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.csv"
+                    val file = File(exportDir, fileName)
+
+                    FileOutputStream(file).use { fos ->
+                        // UTF-8 BOM so Google Sheets and Excel recognize Chinese characters properly
+                        fos.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+                        rows.forEach { row ->
+                            val line = row.joinToString(",") + "\n"
+                            fos.write(line.toByteArray(Charsets.UTF_8))
+                        }
+                    }
+
+                    // Share or Open CSV with Google Sheets / Any Spreadsheet Viewer
+                    val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/csv"
+                        putExtra(Intent.EXTRA_STREAM, contentUri)
+                        putExtra(Intent.EXTRA_SUBJECT, "GeoTrack 過去30天打卡歷史資料 (Google Sheet 格式)")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    context.startActivity(Intent.createChooser(shareIntent, "開啟或儲存至 Google 試算表 / 雲端硬碟"))
+                    Toast.makeText(context, "成功匯出 ${snapshot.documents.size} 筆紀錄 (過去30天)", Toast.LENGTH_LONG).show()
+                } catch (e: Exception) {
+                    Toast.makeText(context, "匯出檔案失敗: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
+                }
+            }
+            .addOnFailureListener { e ->
+                isExporting = false
+                // Fallback: If compound query index is not yet built, fetch all and filter in memory
+                firestore.collection("checkins")
+                    .get()
+                    .addOnSuccessListener { snapshot ->
+                        val validDocs = snapshot.documents.filter { doc ->
+                            val ts = doc.getTimestamp("timestamp")?.toDate()
+                            ts == null || ts.after(thirtyDaysAgo)
+                        }
+                        val rows = mutableListOf<List<String>>()
+                        rows.add(listOf("Email", "GPS_Latitude", "GPS_Longitude", "GPS_Coordinates", "Time", "TripCode", "DeviceModel"))
+                        val timeFmt = SimpleDateFormat("yyyy/MM/dd HH:mm:ss", Locale.getDefault())
+                        validDocs.forEach { doc ->
+                            val email = doc.getString("userEmail") ?: ""
+                            val loc = doc.getGeoPoint("location")
+                            val ts = doc.getTimestamp("timestamp")?.toDate()
+                            val trip = doc.getString("tripCode") ?: ""
+                            val dev = doc.getString("deviceModel") ?: ""
+
+                            val latStr = loc?.latitude?.let { String.format(Locale.US, "%.6f", it) } ?: ""
+                            val lngStr = loc?.longitude?.let { String.format(Locale.US, "%.6f", it) } ?: ""
+                            val coordCombined = if (loc != null) "\"${latStr}, ${lngStr}\"" else ""
+                            val timeStr = ts?.let { timeFmt.format(it) } ?: ""
+
+                            rows.add(listOf(
+                                "\"$email\"",
+                                latStr,
+                                lngStr,
+                                coordCombined,
+                                "\"$timeStr\"",
+                                "\"$trip\"",
+                                "\"$dev\""
+                            ))
+                        }
+
+                        try {
+                            val exportDir = File(context.cacheDir, "exports")
+                            if (!exportDir.exists()) exportDir.mkdirs()
+                            val fileName = "geotrack_30days_${SimpleDateFormat("yyyyMMdd_HHmmss", Locale.getDefault()).format(Date())}.csv"
+                            val file = File(exportDir, fileName)
+
+                            FileOutputStream(file).use { fos ->
+                                fos.write(byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte()))
+                                rows.forEach { row ->
+                                    val line = row.joinToString(",") + "\n"
+                                    fos.write(line.toByteArray(Charsets.UTF_8))
+                                }
+                            }
+
+                            val contentUri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/csv"
+                                putExtra(Intent.EXTRA_STREAM, contentUri)
+                                putExtra(Intent.EXTRA_SUBJECT, "GeoTrack 過去30天打卡歷史資料 (Google Sheet 格式)")
+                                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            context.startActivity(Intent.createChooser(shareIntent, "開啟或儲存至 Google 試算表 / 雲端硬碟"))
+                            Toast.makeText(context, "成功匯出 ${validDocs.size} 筆紀錄 (過去30天)", Toast.LENGTH_LONG).show()
+                        } catch (ex: Exception) {
+                            Toast.makeText(context, "匯出檔案失敗: ${ex.localizedMessage}", Toast.LENGTH_LONG).show()
+                        }
+                    }
+                    .addOnFailureListener {
+                        Toast.makeText(context, "讀取歷史資料失敗: ${it.localizedMessage}", Toast.LENGTH_LONG).show()
+                    }
             }
     }
 
@@ -456,7 +604,7 @@ fun GeoTrackApp() {
                     }
                 }
                 1 -> {
-                    // Screen: 打卡地圖
+                    // Screen: 打卡地圖 (含互動式地圖軌跡視覺化 + Google Maps 導航捷徑)
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -464,7 +612,7 @@ fun GeoTrackApp() {
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = "打卡地圖",
+                            text = "打卡地圖與路線",
                             style = MaterialTheme.typography.headlineMedium,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF1D1B20)
@@ -482,7 +630,7 @@ fun GeoTrackApp() {
                                 OutlinedTextField(
                                     value = mapQueryEmail,
                                     onValueChange = { mapQueryEmail = it },
-                                    label = { Text("使用者 Email") },
+                                    label = { Text("使用者 Email (可留空查全部)") },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp)
@@ -490,7 +638,7 @@ fun GeoTrackApp() {
                                 OutlinedTextField(
                                     value = mapQueryTrip,
                                     onValueChange = { mapQueryTrip = it.uppercase(Locale.ROOT) },
-                                    label = { Text("行程代碼") },
+                                    label = { Text("行程代碼 (可留空查全部)") },
                                     singleLine = true,
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp)
@@ -507,6 +655,76 @@ fun GeoTrackApp() {
                                     Text(if (isSearching) "查詢中..." else "查詢打卡路線")
                                 }
                             }
+                        }
+
+                        // 互動式即時地圖 (Leaflet / OpenStreetMap)
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color.White),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(260.dp)
+                        ) {
+                            val validCoords = searchResults.mapNotNull { it.location }
+                            val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else currentLatitude
+                            val centerLng = if (validCoords.isNotEmpty()) validCoords.first().longitude else currentLongitude
+
+                            val markersJs = searchResults.mapIndexedNotNull { idx, r ->
+                                r.location?.let { loc ->
+                                    val title = "${r.userEmail.substringBefore("@")} (${r.tripCode})"
+                                    "L.marker([${loc.latitude}, ${loc.longitude}]).addTo(map).bindPopup('<b>#${idx+1} ${title}</b><br/>${loc.latitude}, ${loc.longitude}');"
+                                }
+                            }.joinToString("\n")
+
+                            val polylineCoords = validCoords.joinToString(",") { "[${it.latitude}, ${it.longitude}]" }
+                            val polylineJs = if (validCoords.size > 1) {
+                                "var polyline = L.polyline([$polylineCoords], {color: '#6750A4', weight: 4, opacity: 0.8}).addTo(map); map.fitBounds(polyline.getBounds().pad(0.2));"
+                            } else if (validCoords.size == 1) {
+                                "map.setView([${validCoords[0].latitude}, ${validCoords[0].longitude}], 15);"
+                            } else {
+                                "L.marker([$currentLatitude, $currentLongitude]).addTo(map).bindPopup('目前 GPS 位置').openPopup(); map.setView([$currentLatitude, $currentLongitude], 14);"
+                            }
+
+                            val htmlContent = """
+                                <!DOCTYPE html>
+                                <html>
+                                <head>
+                                    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+                                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+                                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                                    <style>
+                                        html, body, #map { width: 100%; height: 100%; margin: 0; padding: 0; }
+                                    </style>
+                                </head>
+                                <body>
+                                    <div id="map"></div>
+                                    <script>
+                                        var map = L.map('map', { zoomControl: true }).setView([$centerLat, $centerLng], 14);
+                                        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                            maxZoom: 19,
+                                            attribution: '© OpenStreetMap'
+                                        }).addTo(map);
+                                        $markersJs
+                                        $polylineJs
+                                    </script>
+                                </body>
+                                </html>
+                            """.trimIndent()
+
+                            AndroidView(
+                                factory = { ctx ->
+                                    WebView(ctx).apply {
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        webViewClient = WebViewClient()
+                                        loadDataWithBaseURL("https://openstreetmap.org", htmlContent, "text/html", "UTF-8", null)
+                                    }
+                                },
+                                update = { webView ->
+                                    webView.loadDataWithBaseURL("https://openstreetmap.org", htmlContent, "text/html", "UTF-8", null)
+                                },
+                                modifier = Modifier.fillMaxSize()
+                            )
                         }
 
                         // Search Results List
@@ -530,7 +748,8 @@ fun GeoTrackApp() {
                                     Column(modifier = Modifier.padding(12.dp)) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Text(
                                                 text = "${r.userEmail.substringBefore("@")} (${r.tripCode})",
@@ -541,10 +760,29 @@ fun GeoTrackApp() {
                                             val tStr = r.timestamp?.let { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(it) } ?: ""
                                             Text(text = tStr, fontSize = 11.sp, color = Color(0xFF6750A4), fontWeight = FontWeight.SemiBold)
                                         }
-                                        val locInfo = r.location?.let { "經緯度: ${it.latitude}, ${it.longitude}" } ?: "無座標"
+                                        val locInfo = r.location?.let { "經緯度: ${String.format(Locale.US, "%.5f", it.latitude)}, ${String.format(Locale.US, "%.5f", it.longitude)}" } ?: "無座標"
                                         Text(text = locInfo, fontSize = 11.sp, fontFamily = FontFamily.Monospace, color = Color(0xFF49454F))
-                                        if (r.deviceModel.isNotBlank()) {
-                                            Text(text = "裝置: ${r.deviceModel}", fontSize = 10.sp, color = Color(0xFF79747E))
+                                        
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (r.deviceModel.isNotBlank()) {
+                                                Text(text = "裝置: ${r.deviceModel}", fontSize = 10.sp, color = Color(0xFF79747E))
+                                            } else {
+                                                Spacer(modifier = Modifier.width(1.dp))
+                                            }
+
+                                            // 標籤：標記於上方內建 OpenStreetMap
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                modifier = Modifier.padding(vertical = 4.dp)
+                                            ) {
+                                                Icon(Icons.Default.LocationOn, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color(0xFF6750A4))
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text("已標記於 OpenStreetMap", fontSize = 11.sp, color = Color(0xFF6750A4), fontWeight = FontWeight.Medium)
+                                            }
                                         }
                                     }
                                 }
@@ -553,7 +791,7 @@ fun GeoTrackApp() {
                     }
                 }
                 2 -> {
-                    // Screen: 關於我
+                    // Screen: 關於我 (含下載過去30天 Google Sheets 格式資料功能)
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -606,6 +844,58 @@ fun GeoTrackApp() {
                             }
                         }
 
+                        // 下載過去30天資料按鈕卡片 (Google Sheet CSV 格式)
+                        Card(
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(containerColor = Color(0xFFF3EDF7)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Download, contentDescription = null, tint = Color(0xFF6750A4))
+                                    Text(
+                                        text = "歷史資料下載 (Google Sheet 格式)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = Color(0xFF1D1B20)
+                                    )
+                                }
+                                Text(
+                                    text = "包含欄位：Email, GPS (經緯度), 時間 (過去30天)，支援匯出為 CSV 並直接在 Google 試算表或 Excel 開啟。",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF49454F),
+                                    lineHeight = 16.sp
+                                )
+                                Button(
+                                    onClick = { exportHistoryDataToGoogleSheetCsv() },
+                                    enabled = !isExporting,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4)),
+                                    shape = RoundedCornerShape(10.dp)
+                                ) {
+                                    if (isExporting) {
+                                        CircularProgressIndicator(
+                                            color = Color.White,
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("正在匯出中...", color = Color.White)
+                                    } else {
+                                        Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("下載過去 30 天歷史紀錄 (CSV/試算表)")
+                                    }
+                                }
+                            }
+                        }
+
                         Card(
                             shape = RoundedCornerShape(16.dp),
                             colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -613,6 +903,7 @@ fun GeoTrackApp() {
                         ) {
                             Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Text(text = "專案環境資訊", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                Text(text = "• 地圖引擎: Leaflet + OpenStreetMap", fontSize = 12.sp, color = Color(0xFF49454F))
                                 Text(text = "• Firebase 專案: geotrack-8e9b4", fontSize = 12.sp, color = Color(0xFF49454F))
                                 Text(text = "• 套件名稱: com.hh.geotrack", fontSize = 12.sp, color = Color(0xFF49454F))
                                 Text(text = "• 資料庫集合: checkins", fontSize = 12.sp, color = Color(0xFF49454F))

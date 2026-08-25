@@ -8,7 +8,9 @@ import {
   Shield,
   Smartphone,
   CheckCircle2,
-  Database
+  Database,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 
 interface Props {
@@ -53,6 +55,62 @@ export const ProfileScreen: React.FC<Props> = ({
     StorageService.setCurrentUser(null);
     showToast('Logged out successfully', 'info');
     onLogout();
+  };
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportCsv = async () => {
+    setIsExporting(true);
+    try {
+      // 1. Fetch records (prefer live Firestore query, fallback to local storage)
+      let allRecords = await StorageService.queryFirestoreLive();
+      if (!allRecords || allRecords.length === 0) {
+        allRecords = StorageService.getAllCheckIns();
+      }
+
+      // 2. Filter last 30 days
+      const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+      const filtered = allRecords.filter(r => new Date(r.timestamp).getTime() >= thirtyDaysAgo);
+
+      // 3. Format CSV rows (Email, GPS, Time, TripCode, Device)
+      const rows = [
+        ['Email', 'GPS_Latitude', 'GPS_Longitude', 'GPS_Coordinates', 'Time', 'TripCode', 'DeviceModel']
+      ];
+
+      filtered.forEach(r => {
+        const lat = r.location?.latitude?.toFixed(6) ?? '';
+        const lng = r.location?.longitude?.toFixed(6) ?? '';
+        const coords = r.location ? `"${lat}, ${lng}"` : '';
+        const timeStr = r.timestamp ? `"${new Date(r.timestamp).toLocaleString('zh-TW', { hour12: false })}"` : '';
+        rows.push([
+          `"${r.userEmail}"`,
+          lat,
+          lng,
+          coords,
+          timeStr,
+          `"${r.tripCode}"`,
+          `"${r.deviceModel || ''}"`
+        ]);
+      });
+
+      const csvContent = '\uFEFF' + rows.map(e => e.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      link.setAttribute('href', url);
+      link.setAttribute('download', `geotrack_30days_${dateStr}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+
+      showToast(`已成功下載過去 30 天歷史資料 (${filtered.length} 筆，Google Sheet CSV 格式)`, 'success');
+    } catch (err: any) {
+      showToast(`匯出失敗: ${err.message}`, 'error');
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleResetData = () => {
@@ -131,6 +189,26 @@ export const ProfileScreen: React.FC<Props> = ({
             ))}
           </div>
         )}
+      </div>
+
+      {/* 30-Day History Export (Google Sheet / CSV) Card */}
+      <div className="bg-[#F3EDF7] border border-[#E7E0EC] rounded-2xl p-4 shadow-xs space-y-2.5">
+        <div className="flex items-center gap-2 text-[#1C1B1F]">
+          <FileSpreadsheet className="w-4 h-4 text-[#6750A4]" />
+          <h3 className="text-xs font-bold">歷史資料下載 (Google Sheet 格式)</h3>
+        </div>
+        <p className="text-[11px] text-[#49454F] leading-relaxed">
+          包含欄位：Email, GPS 經緯度, 時間 (過去30天)，支援匯出為標準 CSV 並直接在 Google 試算表或 Excel 開啟。
+        </p>
+        <button
+          type="button"
+          onClick={handleExportCsv}
+          disabled={isExporting}
+          className="w-full py-2.5 px-3 rounded-xl text-xs font-bold bg-[#6750A4] hover:bg-[#533f85] text-white flex items-center justify-center gap-2 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+        >
+          <Download className="w-3.5 h-3.5" />
+          <span>{isExporting ? '正在匯出中...' : '下載過去 30 天歷史紀錄 (CSV/試算表)'}</span>
+        </button>
       </div>
 
       {/* Database Reset Option for Testers */}
