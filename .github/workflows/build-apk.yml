@@ -27,24 +27,17 @@ jobs:
         with:
           gradle-version: '8.7'
 
-      - name: 📝 Accept Android SDK Licenses
-        run: |
-          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-
       - name: 📦 Build Android Debug APK
         run: |
-          if [ -d "android" ]; then
-            cd android
-            gradle assembleDebug --no-daemon --stacktrace
-          else
-            gradle assembleDebug --no-daemon --stacktrace
-          fi
+          cd android
+          gradle :app:assembleDebug --stacktrace --info
 
       - name: 📤 Upload APK Artifact (Direct Download)
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: GeoTrack-Debug-APK
           path: |
             android/app/build/outputs/apk/debug/*.apk
-            app/build/outputs/apk/debug/*.apk
+            android/app/build/reports/
           retention-days: 14
