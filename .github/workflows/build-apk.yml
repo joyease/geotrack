@@ -5,7 +5,7 @@ on:
     branches: [ "main", "master" ]
   pull_request:
     branches: [ "main", "master" ]
-  workflow_dispatch: # 手動點擊一鍵觸發
+  workflow_dispatch:
 
 jobs:
   build:
@@ -26,18 +26,17 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.4'
-          build-root-directory: 'android'
 
       - name: 📝 Accept Android SDK Licenses
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
       - name: 📦 Build Android Debug APK
+        working-directory: ./android
         run: |
-          cd android
           gradle assembleDebug --stacktrace --no-daemon
 
-      - name: 📤 Upload APK Artifact (Direct Download)
+      - name: 📤 Upload APK Artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
