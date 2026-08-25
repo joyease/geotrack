@@ -14,6 +14,7 @@ import android.util.Log
 import android.net.Uri
 import android.content.Intent
 import android.view.View
+import android.view.MotionEvent
 import androidx.core.content.FileProvider
 import java.io.File
 import java.io.FileOutputStream
