@@ -38,6 +38,7 @@ import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.GeoPoint
@@ -63,10 +64,18 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         try {
             if (FirebaseApp.getApps(this).isEmpty()) {
-                FirebaseApp.initializeApp(this)
+                val options = FirebaseOptions.Builder()
+                    .setApplicationId("1:133122521568:android:51d7db5ef2979686995385")
+                    .setApiKey("AIzaSyBagcQG_7QSBvf0lSdYPmD4vH1VrOeToJY")
+                    .setProjectId("geotrack-8e9b4")
+                    .setStorageBucket("geotrack-8e9b4.appspot.com")
+                    .build()
+                FirebaseApp.initializeApp(this, options)
             }
         } catch (e: Exception) {
-            // Already initialized automatically by FirebaseInitProvider
+            try {
+                FirebaseApp.initializeApp(this)
+            } catch (_: Exception) {}
         }
 
         setContent {
