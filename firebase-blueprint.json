@@ -1,0 +1,42 @@
+{
+  "$schema": "https://raw.githubusercontent.com/firebase/firebase-tools/master/schema/blueprint.schema.json",
+  "entities": {
+    "checkin": {
+      "collection": "checkins",
+      "fields": {
+        "userId": {
+          "type": "string",
+          "description": "User identifier"
+        },
+        "userEmail": {
+          "type": "string",
+          "description": "User Google email address"
+        },
+        "tripCode": {
+          "type": "string",
+          "description": "Trip or task identification code"
+        },
+        "location": {
+          "type": "geopoint",
+          "description": "Latitude and longitude of the check-in point"
+        },
+        "timestamp": {
+          "type": "timestamp",
+          "description": "Time when the check-in was recorded"
+        },
+        "accuracy": {
+          "type": "number",
+          "description": "GPS accuracy in meters"
+        },
+        "addressHint": {
+          "type": "string",
+          "description": "Address or landmark hint"
+        },
+        "deviceModel": {
+          "type": "string",
+          "description": "Device model"
+        }
+      }
+    }
+  }
+}

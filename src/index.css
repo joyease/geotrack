@@ -10,17 +10,17 @@
 }
 
 .custom-popup .leaflet-popup-content-wrapper {
-  background: #FFFFFF;
+  background: transparent;
   color: #1C1B1F;
-  border-radius: 16px;
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.15), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
-  border: 1px solid #E7E0EC;
-  padding: 4px;
+  border-radius: 0;
+  box-shadow: none;
+  border: none;
+  padding: 0;
 }
 
+.custom-popup .leaflet-popup-tip-container,
 .custom-popup .leaflet-popup-tip {
-  background: #FFFFFF;
-  border: 1px solid #E7E0EC;
+  display: none;
 }
 
 /* Material 3 ripple effect simulation */

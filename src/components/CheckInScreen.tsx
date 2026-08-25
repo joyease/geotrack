@@ -2,16 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { AuthUser, CheckInRecord, GeoPoint } from '../types';
 import { StorageService } from '../services/storage';
 import {
-  MapPin,
-  Compass,
   RefreshCw,
   Clock,
   Send,
-  Navigation,
-  CheckCircle,
   AlertTriangle,
-  History,
-  Tag
+  History
 } from 'lucide-react';
 
 interface Props {
@@ -30,17 +25,9 @@ export const CheckInScreen: React.FC<Props> = ({
   const [accuracy, setAccuracy] = useState<number | null>(null);
   const [addressHint, setAddressHint] = useState<string>('');
   const [isLocating, setIsLocating] = useState<boolean>(false);
-  const [hasPermission, setHasPermission] = useState<boolean>(true);
+  const [, setHasPermission] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [recentCheckIns, setRecentCheckIns] = useState<CheckInRecord[]>([]);
-
-  // Pre-configured GPS coordinates for testing and demoing
-  const demoLocations = [
-    { name: 'Taipei 101 Tower', lat: 25.033964, lng: 121.564468, hint: 'Taipei 101, Xinyi District' },
-    { name: 'Taipei Main Station', lat: 25.0478, lng: 121.5170, hint: 'Taipei Main Station Front' },
-    { name: 'Los Angeles DT', lat: 34.0522, lng: -118.2437, hint: 'Los Angeles Metro, California' },
-    { name: 'Shibuya Crossing', lat: 35.6595, lng: 139.7004, hint: 'Shibuya Crossing, Tokyo' }
-  ];
 
   const tripCodeSuggestions = [
     'TRP-2024-08',
@@ -150,13 +137,6 @@ export const CheckInScreen: React.FC<Props> = ({
     }
   };
 
-  const selectDemoLocation = (loc: { name: string; lat: number; lng: number; hint: string }) => {
-    setLocation({ latitude: loc.lat, longitude: loc.lng });
-    setAccuracy(3.5);
-    setAddressHint(loc.hint);
-    showToast(`Set GPS to: ${loc.name}`, 'info');
-  };
-
   const formatDateTime = (isoString: string) => {
     try {
       const d = new Date(isoString);
@@ -171,8 +151,7 @@ export const CheckInScreen: React.FC<Props> = ({
       {/* Top Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight text-[#1C1B1F]">Check-in</h1>
-          <p className="text-xs text-[#49454F]">地點打卡 · Cloud Firestore Collection: checkins</p>
+          <h1 className="text-2xl font-semibold tracking-tight text-[#1C1B1F]">定位打卡</h1>
         </div>
         <span className="px-3 py-1 rounded-full text-xs font-mono bg-[#EADDFF] text-[#6750A4] font-semibold border border-[#D0BCFF]">
           {currentUser.email.split('@')[0]}
@@ -184,7 +163,7 @@ export const CheckInScreen: React.FC<Props> = ({
         <div className="flex items-start justify-between">
           <div className="space-y-1">
             <div className="text-xs uppercase font-bold text-[#6750A4] tracking-wider">
-              Current Status (GPS 定位狀態)
+              GPS 定位狀態
             </div>
 
             {isLocating ? (
@@ -220,31 +199,13 @@ export const CheckInScreen: React.FC<Props> = ({
             <RefreshCw className={`w-4 h-4 ${isLocating ? 'animate-spin text-[#6750A4]' : ''}`} />
           </button>
         </div>
-
-        {/* GPS Quick Location Simulator Presets */}
-        <div className="mt-3 pt-2.5 border-t border-[#E7E0EC] flex items-center gap-1.5 overflow-x-auto text-[11px] no-scrollbar">
-          <span className="text-[#49454F] font-medium shrink-0 flex items-center gap-1">
-            <Navigation className="w-3 h-3 text-[#6750A4]" />
-            Presets:
-          </span>
-          {demoLocations.map(loc => (
-            <button
-              key={loc.name}
-              type="button"
-              onClick={() => selectDemoLocation(loc)}
-              className="shrink-0 px-2 py-0.5 rounded-lg bg-white hover:bg-[#EADDFF] text-[#49454F] hover:text-[#6750A4] border border-[#E7E0EC] text-[10px] cursor-pointer transition-colors"
-            >
-              {loc.name}
-            </button>
-          ))}
-        </div>
       </div>
 
       {/* Check-in Form */}
       <form onSubmit={handleCheckInSubmit} className="space-y-4">
         <div className="space-y-1.5">
           <label className="block">
-            <span className="text-sm font-medium px-1 text-[#1C1B1F]">Trip Code (行程代碼)*</span>
+            <span className="text-sm font-medium px-1 text-[#1C1B1F]">行程代碼</span>
             <input
               id="checkin-input-tripcode"
               type="text"
@@ -285,12 +246,12 @@ export const CheckInScreen: React.FC<Props> = ({
           {isSubmitting ? (
             <>
               <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              <span>SAVING TO FIRESTORE...</span>
+              <span>儲存中...</span>
             </>
           ) : (
             <>
               <Send className="w-4 h-4" />
-              <span>PERFORM CHECK-IN (確認打卡)</span>
+              <span>確認打卡</span>
             </>
           )}
         </button>
@@ -299,12 +260,12 @@ export const CheckInScreen: React.FC<Props> = ({
       {/* Recent Check-ins List (Sleek Interface Style) */}
       <div className="space-y-2 pt-3">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold text-[#49454F] uppercase tracking-wider flex items-center gap-1.5">
+          <h3 className="text-sm font-bold text-[#49454F] tracking-wider flex items-center gap-1.5">
             <History className="w-3.5 h-3.5 text-[#6750A4]" />
-            <span>Recent Check-ins</span>
+            <span>最近打卡</span>
           </h3>
           <span className="text-[10px] text-[#79747E] font-mono">
-            {recentCheckIns.length} records
+            {recentCheckIns.length} 筆
           </span>
         </div>
 

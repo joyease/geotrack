@@ -163,34 +163,19 @@ export const SupervisorMapScreen: React.FC<Props> = ({
       const customIcon = createCustomMarkerIcon(idx, records.length);
       const marker = L.marker(point, { icon: customIcon }).addTo(markersLayer);
 
-      const dateStr = new Date(record.timestamp).toLocaleString('zh-TW', {
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-      });
+      const date = new Date(record.timestamp);
+      const year = date.getFullYear();
+      const month = String(date.getMonth() + 1).padStart(2, '0');
+      const day = String(date.getDate()).padStart(2, '0');
+      const hours = String(date.getHours()).padStart(2, '0');
+      const minutes = String(date.getMinutes()).padStart(2, '0');
+      const formattedTime = `${year}/${month}/${day} ${hours}:${minutes}`;
+      const username = record.userEmail ? record.userEmail.split('@')[0] : 'user';
 
       const popupHtml = `
-        <div class="p-2 space-y-1.5 min-w-[210px] text-[#1C1B1F] font-['Roboto']">
-          <div class="flex items-center justify-between border-b border-[#E7E0EC] pb-1.5">
-            <span class="font-bold text-xs text-[#6750A4] font-mono tracking-wider">
-              ${record.tripCode}
-            </span>
-            <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#EADDFF] text-[#6750A4] font-bold font-mono">
-              Stop #${idx + 1}
-            </span>
-          </div>
-          <div class="text-[11px] text-[#49454F] space-y-0.5">
-            <div><span class="text-[#79747E] font-medium">User:</span> <strong class="text-[#1C1B1F]">${record.userEmail}</strong></div>
-            <div><span class="text-[#79747E] font-medium">Time:</span> ${dateStr}</div>
-            <div class="font-mono text-[10px] text-[#79747E] pt-0.5">
-              Lat: ${lat.toFixed(5)}, Lng: ${lng.toFixed(5)}
-            </div>
-            ${record.addressHint ? `<div class="text-[10px] text-[#79747E] truncate font-sans">${record.addressHint}</div>` : ''}
-          </div>
+        <div class="px-2 py-1 text-center font-bold text-xs text-[#1C1B1F] whitespace-nowrap" style="text-shadow: 0 1px 3px rgba(255,255,255,0.9), 0 0 6px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,1);">
+          <div class="text-[#1C1B1F] font-bold text-xs">${username}</div>
+          <div class="text-[11px] font-semibold text-[#49454F]">${formattedTime}</div>
         </div>
       `;
 
@@ -221,27 +206,53 @@ export const SupervisorMapScreen: React.FC<Props> = ({
     }
   };
 
-  const handleSearch = (emailQuery: string, tripQuery: string, userInitiated = true) => {
+  const handleSearch = async (emailQuery: string, tripQuery: string, userInitiated = true) => {
     setIsSearching(true);
 
-    setTimeout(() => {
+    try {
+      // 1. Try querying live Firestore directly first
+      const liveFirestoreResults = await StorageService.queryFirestoreLive(emailQuery, tripQuery);
+      
+      // 2. Also get local results to merge seamlessly
+      const localResults = StorageService.searchCheckIns(emailQuery, tripQuery);
+
+      // Combine results uniquely by ID or timestamp
+      const combinedMap = new Map<string, CheckInRecord>();
+      localResults.forEach(r => combinedMap.set(r.id, r));
+      liveFirestoreResults.forEach(r => combinedMap.set(r.id, r));
+      
+      const cleanTrip = tripQuery.trim().toLowerCase();
+      const cleanEmail = emailQuery.trim().toLowerCase();
+
+      const results = Array.from(combinedMap.values()).filter(record => {
+        const matchEmail = !cleanEmail || record.userEmail.toLowerCase().includes(cleanEmail);
+        const matchTrip = !cleanTrip || record.tripCode.toLowerCase().includes(cleanTrip);
+        return matchEmail && matchTrip;
+      }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
       setIsSearching(false);
-      const results = StorageService.searchCheckIns(emailQuery, tripQuery);
       setMatchedRecords(results);
 
       if (results.length === 0) {
         if (userInitiated) {
-          showToast('No check-in records matched this query', 'error');
+          showToast('查無符合此條件的打卡紀錄', 'error');
         }
         if (markersLayerRef.current) markersLayerRef.current.clearLayers();
         if (polylineLayerRef.current) polylineLayerRef.current.clearLayers();
       } else {
         renderMarkersOnMap(results);
         if (userInitiated) {
-          showToast(`Found ${results.length} check-in points on Leaflet map`, 'success');
+          showToast(`已於地圖標示 ${results.length} 筆打卡點`, 'success');
         }
       }
-    }, 300);
+    } catch {
+      setIsSearching(false);
+      const results = StorageService.searchCheckIns(emailQuery, tripQuery);
+      setMatchedRecords(results);
+      if (results.length > 0) {
+        renderMarkersOnMap(results);
+      }
+    }
   };
 
   const executeSearch = (e?: React.FormEvent) => {
@@ -267,8 +278,13 @@ export const SupervisorMapScreen: React.FC<Props> = ({
 
   return (
     <div id="screen-supervisor-map" className="flex-1 flex flex-col relative overflow-hidden bg-[#CAD2D3] text-[#1C1B1F]">
-      {/* Top Search Controls (Sleek Interface Input Bar) */}
+      {/* Top Search Controls */}
       <div className="z-20 bg-white border-b border-[#E7E0EC] p-3 shadow-xs space-y-2">
+        {/* Title */}
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold tracking-tight text-[#1C1B1F]">打卡地圖</h1>
+        </div>
+
         <form onSubmit={executeSearch} className="space-y-2">
           <div className="grid grid-cols-2 gap-2">
             {/* User Email Field */}
@@ -281,7 +297,7 @@ export const SupervisorMapScreen: React.FC<Props> = ({
                 type="text"
                 value={searchEmail}
                 onChange={e => setSearchEmail(e.target.value)}
-                placeholder="User Email (用戶Email)"
+                placeholder="User Email"
                 className="w-full bg-white border border-[#79747E] focus:border-[#6750A4] focus:ring-1 focus:ring-[#6750A4] rounded-lg pl-8 pr-2 py-2 text-xs text-[#1C1B1F] placeholder-[#79747E]/70 outline-none"
               />
             </div>
@@ -296,7 +312,7 @@ export const SupervisorMapScreen: React.FC<Props> = ({
                 type="text"
                 value={searchTripCode}
                 onChange={e => setSearchTripCode(e.target.value.toUpperCase())}
-                placeholder="Trip Code (行程代碼)"
+                placeholder="Trip Code"
                 className="w-full bg-white border border-[#79747E] focus:border-[#6750A4] focus:ring-1 focus:ring-[#6750A4] rounded-lg pl-8 pr-2 py-2 text-xs text-[#1C1B1F] font-mono uppercase placeholder-[#79747E]/70 outline-none"
               />
             </div>
@@ -314,38 +330,21 @@ export const SupervisorMapScreen: React.FC<Props> = ({
             ) : (
               <>
                 <Search className="w-3.5 h-3.5" />
-                <span>SEARCH LOCATION (查詢打卡路線)</span>
+                <span>查詢打卡路線</span>
               </>
             )}
           </button>
         </form>
 
-        {/* Quick Filter Presets Chips */}
-        <div className="flex items-center gap-1.5 overflow-x-auto text-[10px] pt-0.5 no-scrollbar">
-          <span className="text-[#49454F] font-bold shrink-0 flex items-center gap-1">
-            <Sparkles className="w-3 h-3 text-[#6750A4]" />
-            Presets:
-          </span>
+        {/* Demo Preset Guide */}
+        <div className="flex items-center justify-between text-[11px] pt-0.5 text-[#49454F]">
           <button
             type="button"
-            onClick={() => applyPreset('hermanntalk@gmail.com', 'INSPECT-0824-A')}
-            className="shrink-0 px-2 py-0.5 rounded-full bg-[#F7F2FA] hover:bg-[#EADDFF] text-[#49454F] hover:text-[#6750A4] border border-[#E7E0EC] font-mono cursor-pointer transition-colors"
+            onClick={() => applyPreset('hermanntalk@gmail.com', 'TAIPEI')}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F7F2FA] hover:bg-[#EADDFF] text-[#6750A4] border border-[#E7E0EC] font-medium cursor-pointer transition-colors"
           >
-            Hermann · INSPECT-0824-A
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset('field_agent_01@company.com', 'ROUTE-METRO-99')}
-            className="shrink-0 px-2 py-0.5 rounded-full bg-[#F7F2FA] hover:bg-[#EADDFF] text-[#49454F] hover:text-[#6750A4] border border-[#E7E0EC] font-mono cursor-pointer transition-colors"
-          >
-            Agent 01 · ROUTE-METRO-99
-          </button>
-          <button
-            type="button"
-            onClick={() => applyPreset('', '')}
-            className="shrink-0 px-2 py-0.5 rounded-full bg-[#F7F2FA] hover:bg-[#EADDFF] text-[#49454F] hover:text-[#6750A4] border border-[#E7E0EC] cursor-pointer transition-colors"
-          >
-            View All Records
+            <Sparkles className="w-3.5 h-3.5 text-[#6750A4] shrink-0" />
+            <span>輸入 hermanntalk@gmail.com 與 TAIPEI 看示範</span>
           </button>
         </div>
       </div>
@@ -407,21 +406,15 @@ export const SupervisorMapScreen: React.FC<Props> = ({
           </button>
         </div>
 
-        {/* Bottom Floating Map Info Bar */}
-        <div className="absolute bottom-3 left-3 right-3 z-20 pointer-events-none">
-          <div className="pointer-events-auto bg-white/95 backdrop-blur-md border border-[#E7E0EC] rounded-xl px-3 py-2 text-xs flex items-center justify-between text-[#1C1B1F] shadow-md">
-            <div className="flex items-center gap-2">
-              <Route className="w-4 h-4 text-[#6750A4] shrink-0" />
-              <span className="font-bold text-[#1C1B1F]">
-                {matchedRecords.length} Check-in Point{matchedRecords.length !== 1 ? 's' : ''} Plotted
-              </span>
-            </div>
+        {/* Bottom Floating Map Info Bar (Right-aligned trip & count) */}
+        <div className="absolute bottom-3 right-3 z-20 pointer-events-none">
+          <div className="pointer-events-auto bg-white/95 backdrop-blur-md border border-[#E7E0EC] rounded-xl px-3 py-1.5 text-xs flex items-center gap-2 text-[#1C1B1F] shadow-md font-mono">
             {matchedRecords.length > 0 ? (
-              <div className="flex items-center gap-1 text-[11px] text-[#49454F] font-mono">
-                <span className="font-bold text-[#6750A4]">Trip: {matchedRecords[0].tripCode}</span>
-              </div>
+              <span className="font-semibold text-[#6750A4]">
+                ({matchedRecords[0].tripCode}) {matchedRecords.length} 筆
+              </span>
             ) : (
-              <div className="text-[10px] text-[#79747E] font-mono">Leaflet.js + OSM Tiles</div>
+              <span className="text-[#79747E]">0 筆</span>
             )}
           </div>
         </div>

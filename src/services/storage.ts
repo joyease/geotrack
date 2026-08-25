@@ -6,8 +6,6 @@ import {
   getDocs, 
   query, 
   where, 
-  orderBy, 
-  limit, 
   serverTimestamp,
   GeoPoint as FirestoreGeoPoint,
   Timestamp
@@ -22,9 +20,9 @@ const SEED_CHECKINS: CheckInRecord[] = [
     id: 'chk_seed_101',
     userId: 'usr_hermann_01',
     userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'INSPECT-0824-A',
+    tripCode: 'TAIPEI',
     location: { latitude: 25.033964, longitude: 121.564468 }, // Taipei 101
-    timestamp: new Date(Date.now() - 3600 * 1000 * 3.5).toISOString(),
+    timestamp: new Date(Date.now() - 3600 * 1000 * 6.5).toISOString(),
     accuracy: 4.2,
     addressHint: 'Taipei 101 Tower Base, Xinyi District',
     deviceModel: 'Pixel 8 Pro (Android 15)'
@@ -33,9 +31,9 @@ const SEED_CHECKINS: CheckInRecord[] = [
     id: 'chk_seed_102',
     userId: 'usr_hermann_01',
     userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'INSPECT-0824-A',
+    tripCode: 'TAIPEI',
     location: { latitude: 25.0385, longitude: 121.5583 }, // Sun Yat-sen Memorial Hall
-    timestamp: new Date(Date.now() - 3600 * 1000 * 2.2).toISOString(),
+    timestamp: new Date(Date.now() - 3600 * 1000 * 5.2).toISOString(),
     accuracy: 3.8,
     addressHint: 'SYS Memorial Hall, Renai Road',
     deviceModel: 'Pixel 8 Pro (Android 15)'
@@ -44,9 +42,9 @@ const SEED_CHECKINS: CheckInRecord[] = [
     id: 'chk_seed_103',
     userId: 'usr_hermann_01',
     userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'INSPECT-0824-A',
+    tripCode: 'TAIPEI',
     location: { latitude: 25.0418, longitude: 121.5353 }, // Huashan 1914 Park
-    timestamp: new Date(Date.now() - 3600 * 1000 * 1.1).toISOString(),
+    timestamp: new Date(Date.now() - 3600 * 1000 * 4.1).toISOString(),
     accuracy: 5.1,
     addressHint: 'Huashan 1914 Creative Park, Zhongzheng',
     deviceModel: 'Pixel 8 Pro (Android 15)'
@@ -55,45 +53,45 @@ const SEED_CHECKINS: CheckInRecord[] = [
     id: 'chk_seed_104',
     userId: 'usr_hermann_01',
     userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'TRIP-NORTH-EXPRESS',
+    tripCode: 'TAIPEI',
     location: { latitude: 25.0478, longitude: 121.5170 }, // Taipei Main Station
-    timestamp: new Date(Date.now() - 3600 * 1000 * 24).toISOString(),
+    timestamp: new Date(Date.now() - 3600 * 1000 * 3.0).toISOString(),
     accuracy: 4.0,
     addressHint: 'Taipei Main Station Station Front',
     deviceModel: 'Pixel 8 Pro (Android 15)'
   },
   {
     id: 'chk_seed_105',
-    userId: 'usr_agent_02',
-    userEmail: 'field_agent_01@company.com',
-    tripCode: 'ROUTE-METRO-99',
-    location: { latitude: 35.6586, longitude: 139.7454 }, // Tokyo Tower
-    timestamp: new Date(Date.now() - 3600 * 1000 * 4.5).toISOString(),
-    accuracy: 6.0,
-    addressHint: 'Tokyo Tower, Minato City',
-    deviceModel: 'Samsung Galaxy S24 Ultra'
+    userId: 'usr_hermann_01',
+    userEmail: 'hermanntalk@gmail.com',
+    tripCode: 'TAIPEI',
+    location: { latitude: 25.0422, longitude: 121.5080 }, // Ximending
+    timestamp: new Date(Date.now() - 3600 * 1000 * 2.1).toISOString(),
+    accuracy: 3.5,
+    addressHint: 'Ximending Walking Street',
+    deviceModel: 'Pixel 8 Pro (Android 15)'
   },
   {
     id: 'chk_seed_106',
-    userId: 'usr_agent_02',
-    userEmail: 'field_agent_01@company.com',
-    tripCode: 'ROUTE-METRO-99',
-    location: { latitude: 35.6595, longitude: 139.7004 }, // Shibuya Crossing
-    timestamp: new Date(Date.now() - 3600 * 1000 * 2.8).toISOString(),
-    accuracy: 3.5,
-    addressHint: 'Shibuya Crossing Hachiko Exit',
-    deviceModel: 'Samsung Galaxy S24 Ultra'
+    userId: 'usr_hermann_01',
+    userEmail: 'hermanntalk@gmail.com',
+    tripCode: 'TAIPEI',
+    location: { latitude: 25.0353, longitude: 121.5197 }, // Chiang Kai-shek Memorial Hall
+    timestamp: new Date(Date.now() - 3600 * 1000 * 1.2).toISOString(),
+    accuracy: 3.9,
+    addressHint: 'Chiang Kai-shek Memorial Hall Square',
+    deviceModel: 'Pixel 8 Pro (Android 15)'
   },
   {
     id: 'chk_seed_107',
-    userId: 'usr_agent_02',
-    userEmail: 'field_agent_01@company.com',
-    tripCode: 'ROUTE-METRO-99',
-    location: { latitude: 35.6895, longitude: 139.6917 }, // Shinjuku
-    timestamp: new Date(Date.now() - 3600 * 1000 * 1.4).toISOString(),
-    accuracy: 4.8,
-    addressHint: 'Tokyo Metropolitan Govt, Shinjuku',
-    deviceModel: 'Samsung Galaxy S24 Ultra'
+    userId: 'usr_hermann_01',
+    userEmail: 'hermanntalk@gmail.com',
+    tripCode: 'TAIPEI',
+    location: { latitude: 25.0330, longitude: 121.5320 }, // Daan Forest Park
+    timestamp: new Date(Date.now() - 3600 * 1000 * 0.4).toISOString(),
+    accuracy: 3.2,
+    addressHint: 'Daan Forest Park Metro Station',
+    deviceModel: 'Pixel 8 Pro (Android 15)'
   }
 ];
 
@@ -106,11 +104,10 @@ export const StorageService = {
     } catch {
       // ignore
     }
-    // Default logged-in user Hermann for smooth testing
     const defaultUser: AuthUser = {
       uid: 'usr_hermann_01',
       email: 'hermanntalk@gmail.com',
-      displayName: 'Hermann (Inspector)'
+      displayName: 'Hermann'
     };
     this.setCurrentUser(defaultUser);
     return defaultUser;
@@ -183,7 +180,7 @@ export const StorageService = {
     all.unshift(newRecord);
     localStorage.setItem(STORAGE_CHECKINS_KEY, JSON.stringify(all));
 
-    // 2. Write to live Cloud Firestore (geotrack-8e9b4)
+    // 2. Write to live Cloud Firestore (collection: checkins)
     try {
       const checkinsRef = collection(db, 'checkins');
       await addDoc(checkinsRef, {
@@ -194,11 +191,11 @@ export const StorageService = {
         timestamp: serverTimestamp(),
         accuracy: record.accuracy || 4.5,
         addressHint: newRecord.addressHint,
-        deviceModel: 'Android (com.hh.geotrack)'
+        deviceModel: 'Android (MySportsPal)'
       });
-      console.log('Successfully written to Cloud Firestore collection [checkins]');
+      console.log('✅ Successfully persisted to Cloud Firestore collection [checkins]');
     } catch (err) {
-      console.warn('Firestore live write notice (offline or rules fallback):', err);
+      console.warn('Firestore live write error / offline fallback:', err);
     }
 
     return newRecord;
@@ -213,11 +210,50 @@ export const StorageService = {
       const matchEmail = !cleanEmail || record.userEmail.toLowerCase().includes(cleanEmail);
       const matchTrip = !cleanTripCode || record.tripCode.toLowerCase().includes(cleanTripCode);
       return matchEmail && matchTrip;
-    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()); // chronological for route visualization
+    }).sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+  },
+
+  async queryFirestoreLive(userEmailQuery?: string, tripCodeQuery?: string): Promise<CheckInRecord[]> {
+    try {
+      const checkinsRef = collection(db, 'checkins');
+      let q = query(checkinsRef);
+      if (userEmailQuery && userEmailQuery.trim()) {
+        q = query(checkinsRef, where('userEmail', '==', userEmailQuery.trim()));
+      }
+      const snapshot = await getDocs(q);
+      if (snapshot.empty) return [];
+
+      const records: CheckInRecord[] = [];
+      snapshot.forEach(docSnap => {
+        const data = docSnap.data();
+        const loc = data.location as FirestoreGeoPoint;
+        let tsStr = new Date().toISOString();
+        if (data.timestamp instanceof Timestamp) {
+          tsStr = data.timestamp.toDate().toISOString();
+        }
+        records.push({
+          id: docSnap.id,
+          userId: data.userId || '',
+          userEmail: data.userEmail || '',
+          tripCode: data.tripCode || '',
+          location: {
+            latitude: loc?.latitude ?? 0,
+            longitude: loc?.longitude ?? 0
+          },
+          timestamp: tsStr,
+          accuracy: data.accuracy,
+          addressHint: data.addressHint,
+          deviceModel: data.deviceModel
+        });
+      });
+      return records;
+    } catch (err) {
+      console.warn('Live Firestore query fallback:', err);
+      return [];
+    }
   },
 
   resetDemoData(): void {
     localStorage.setItem(STORAGE_CHECKINS_KEY, JSON.stringify(SEED_CHECKINS));
   }
 };
-

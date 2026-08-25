@@ -2,6 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
+// Your geotrack Firebase Project Configuration
 export const firebaseConfig = {
   apiKey: "AIzaSyAETkn9tIEVifMr2_r6oAmW8Sg11eMs_Is",
   authDomain: "geotrack-8e9b4.firebaseapp.com",

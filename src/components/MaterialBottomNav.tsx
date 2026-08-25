@@ -8,23 +8,20 @@ interface Props {
 }
 
 export const MaterialBottomNav: React.FC<Props> = ({ activeTab, onTabChange }) => {
-  const tabs: { id: NavigationTab; label: string; subLabel: string; icon: React.ReactNode }[] = [
+  const tabs: { id: NavigationTab; label: string; icon: React.ReactNode }[] = [
     {
       id: 'checkin',
-      label: 'Check-in',
-      subLabel: '地點打卡',
+      label: '定位打卡',
       icon: <MapPin className="w-4 h-4" />
     },
     {
       id: 'map',
-      label: 'Map',
-      subLabel: '主管地圖',
+      label: '打卡地圖',
       icon: <Map className="w-4 h-4" />
     },
     {
       id: 'profile',
-      label: 'Profile',
-      subLabel: '個人資料',
+      label: '關於我',
       icon: <User className="w-4 h-4" />
     }
   ];
