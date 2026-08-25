@@ -1,0 +1,6 @@
+{
+  "name": "GeoCheckin Supervisor",
+  "description": "Location-based check-ins and supervisor monitoring app with Jetpack Compose Material 3 UI, Firebase Firestore integration, and Leaflet map visualization.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
