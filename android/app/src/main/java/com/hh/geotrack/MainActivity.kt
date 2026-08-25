@@ -1009,7 +1009,7 @@ fun GeoTrackApp() {
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .background(Color(0xFFEADDFF))
+                                .background(Color.Gray)
                         ) {
                             val validCoords = searchResults.mapNotNull { it.location }
                             val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else if (currentLatitude != 0.0) currentLatitude else 25.0339
@@ -1059,62 +1059,67 @@ fun GeoTrackApp() {
                                 <head>
                                     <meta charset="utf-8">
                                     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-                                    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-                                    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+                                    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+                                    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
                                     <style>
                                         * { margin: 0; padding: 0; box-sizing: border-box; }
-                                        html, body { width: 100%; height: 100%; margin: 0; padding: 0; background: #e5e3df; overflow: hidden; }
-                                        #map { width: 100%; height: 100%; position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+                                        html, body { width: 100vw; height: 100vh; overflow: hidden; background-color: #e5e3df; margin: 0; padding: 0; }
+                                        #map { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
                                         .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
                                     </style>
                                 </head>
                                 <body>
                                     <div id="map"></div>
                                     <script>
-                                        document.addEventListener("DOMContentLoaded", function() {
+                                        var map = null;
+                                        var currentLayer = null;
+                                        var tileUrls = {
+                                            clean: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                                            osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+                                            sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                                        };
+
+                                        function setTileLayer(type) {
+                                            if (!map) return;
+                                            if (currentLayer) {
+                                                map.removeLayer(currentLayer);
+                                            }
+                                            var url = tileUrls[type] || tileUrls.clean;
+                                            currentLayer = L.tileLayer(url, {
+                                                maxZoom: 19,
+                                                subdomains: 'abcd',
+                                                attribution: '&copy; CARTO &copy; OpenStreetMap'
+                                            }).addTo(map);
+                                        }
+
+                                        function recenterMap() {
+                                            if (!map) return;
+                                            map.invalidateSize();
+                                            map.setView([$centerLat, $centerLng], 14);
+                                        }
+
+                                        window.onload = function() {
                                             try {
-                                                var map = L.map('map', {
+                                                map = L.map('map', {
                                                     zoomControl: true,
                                                     attributionControl: false
                                                 }).setView([$centerLat, $centerLng], 14);
 
                                                 window.currentMap = map;
 
-                                                // 預設採用 CartoDB 高速高容錯 Voyager 圖資
-                                                var tileUrls = {
-                                                    clean: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
-                                                    osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                                    sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-                                                };
-
-                                                var initialUrl = tileUrls['$currentTileType'] || tileUrls.clean;
-                                                var tileLayer = L.tileLayer(initialUrl, {
-                                                    maxZoom: 19,
-                                                    subdomains: 'abcd',
-                                                    attribution: '&copy; CARTO &copy; OpenStreetMap'
-                                                }).addTo(map);
-
-                                                window.setMapTileType = function(type) {
-                                                    if (!map) return;
-                                                    map.removeLayer(tileLayer);
-                                                    var newUrl = tileUrls[type] || tileUrls.clean;
-                                                    tileLayer = L.tileLayer(newUrl, {
-                                                        maxZoom: 19,
-                                                        subdomains: 'abcd'
-                                                    }).addTo(map);
-                                                };
+                                                setTileLayer('$currentTileType');
 
                                                 $markersJs
                                                 $polylineJs
 
-                                                // 多次觸發 invalidateSize，保證在 Compose 渲染完成後圖資 100% 刷出
-                                                setTimeout(function() { map.invalidateSize(); }, 150);
-                                                setTimeout(function() { map.invalidateSize(); }, 400);
-                                                setTimeout(function() { map.invalidateSize(); }, 1000);
-                                            } catch (err) {
-                                                console.error("Leaflet Map init error:", err);
+                                                // 強制在 200ms 與 600ms 重刷尺寸，徹底解決 Android 渲染延遲
+                                                setTimeout(function() { if (map) map.invalidateSize(); }, 200);
+                                                setTimeout(function() { if (map) map.invalidateSize(); }, 600);
+                                            } catch (e) {
+                                                console.error("Leaflet Error:", e);
+                                                document.body.innerHTML = '<h3 style="color:red;padding:20px;font-family:sans-serif;">地圖載入異常: ' + e.message + '</h3>';
                                             }
-                                        });
+                                        };
                                     </script>
                                 </body>
                                 </html>
