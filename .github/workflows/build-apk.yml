@@ -22,10 +22,9 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: 🐘 Setup Gradle 8.4
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.4'
+      - name: 🔐 Set gradlew execution permissions
+        run: |
+          chmod +x android/gradlew
 
       - name: 📝 Accept Android SDK Licenses
         run: |
@@ -34,7 +33,7 @@ jobs:
       - name: 📦 Build Android Debug APK
         working-directory: ./android
         run: |
-          gradle assembleDebug --stacktrace --no-daemon
+          ./gradlew assembleDebug --stacktrace --no-daemon
 
       - name: 📤 Upload APK Artifact
         if: always()
