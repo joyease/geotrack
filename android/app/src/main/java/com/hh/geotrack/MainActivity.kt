@@ -9,6 +9,8 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.webkit.WebChromeClient
 import android.webkit.WebSettings
+import android.webkit.ConsoleMessage
+import android.util.Log
 import android.net.Uri
 import android.content.Intent
 import android.view.View
@@ -917,7 +919,9 @@ fun GeoTrackApp() {
                             val markersJs = searchResults.mapNotNull { r ->
                                 r.location?.let { loc ->
                                     val tStr = r.timestamp?.let { SimpleDateFormat("MM/dd HH:mm", Locale.getDefault()).format(it) } ?: ""
-                                    "L.marker([${loc.latitude}, ${loc.longitude}]).addTo(map).bindPopup('<b>${r.tripCode}</b><br/>${r.userEmail}<br/>${tStr}');"
+                                    val safeTrip = r.tripCode.replace("'", "\\'")
+                                    val safeEmail = r.userEmail.replace("'", "\\'")
+                                    "L.marker([${loc.latitude}, ${loc.longitude}]).addTo(map).bindPopup('<b>$safeTrip</b><br/>$safeEmail<br/>$tStr');"
                                 }
                             }.joinToString("\n")
 
@@ -936,23 +940,56 @@ fun GeoTrackApp() {
                                 <head>
                                     <meta charset="utf-8">
                                     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-                                    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css" />
-                                    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+                                    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
+                                    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
                                     <style>
-                                        html, body { width: 100%; height: 100%; margin: 0; padding: 0; background: #e9e5f3; overflow: hidden; }
-                                        #map { width: 100vw; height: 100vh; min-height: 290px; }
-                                        .leaflet-container { font-family: system-ui, -apple-system, sans-serif; font-size: 12px; }
+                                        * { margin: 0; padding: 0; box-sizing: border-box; }
+                                        html, body { width: 100%; height: 100%; background: #F3EDF7; overflow: hidden; }
+                                        #map { width: 100%; height: 100%; min-height: 290px; }
+                                        .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; }
+                                        #status-overlay {
+                                            position: absolute; bottom: 8px; left: 8px; z-index: 1000;
+                                            background: rgba(103, 80, 164, 0.9); color: #fff;
+                                            padding: 4px 8px; border-radius: 8px; font-size: 11px; pointer-events: none;
+                                        }
                                     </style>
                                 </head>
                                 <body>
                                     <div id="map"></div>
+                                    <div id="status-overlay">地圖載入中...</div>
                                     <script>
+                                        window.onerror = function(msg, url, line) {
+                                            console.error("LeafletError: " + msg + " at " + line);
+                                            var st = document.getElementById('status-overlay');
+                                            if (st) st.innerText = "地圖腳本錯誤: " + msg;
+                                        };
+
                                         try {
-                                            var map = L.map('map', { zoomControl: true, attributionControl: false }).setView([$centerLat, $centerLng], 14);
-                                            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                                            var map = L.map('map', { 
+                                                zoomControl: true, 
+                                                attributionControl: false,
+                                                fadeAnimation: true
+                                            }).setView([$centerLat, $centerLng], 14);
+
+                                            var osmLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
                                                 maxZoom: 19,
-                                                subdomains: ['a','b','c']
-                                            }).addTo(map);
+                                                subdomains: ['a','b','c'],
+                                                crossOrigin: true
+                                            });
+
+                                            osmLayer.on('load', function() {
+                                                var st = document.getElementById('status-overlay');
+                                                if (st) st.style.display = 'none';
+                                                console.log("OSM tiles loaded successfully");
+                                            });
+
+                                            osmLayer.on('tileerror', function(error, tile) {
+                                                console.warn("Tile load error, attempting fallback");
+                                                var st = document.getElementById('status-overlay');
+                                                if (st) st.innerText = "部分圖磚連線較慢...";
+                                            });
+
+                                            osmLayer.addTo(map);
                                             
                                             $markersJs
                                             $polylineJs
@@ -962,17 +999,21 @@ fun GeoTrackApp() {
                                                     map.invalidateSize(true);
                                                 }
                                             }
+
                                             map.whenReady(function() {
                                                 fixMapSize();
                                                 setTimeout(fixMapSize, 100);
                                                 setTimeout(fixMapSize, 300);
-                                                setTimeout(fixMapSize, 800);
-                                                setTimeout(fixMapSize, 1500);
+                                                setTimeout(fixMapSize, 600);
+                                                setTimeout(fixMapSize, 1200);
                                             });
+
                                             window.addEventListener('resize', fixMapSize);
                                             window.addEventListener('load', fixMapSize);
                                         } catch (err) {
-                                            console.error("Map init error: " + err);
+                                            console.error("Map init exception: " + err.message);
+                                            var st = document.getElementById('status-overlay');
+                                            if (st) st.innerText = "初始化異常: " + err.message;
                                         }
                                     </script>
                                 </body>
@@ -993,9 +1034,22 @@ fun GeoTrackApp() {
                                             allowFileAccess = true
                                             mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                                             cacheMode = WebSettings.LOAD_DEFAULT
+                                            userAgentString = "Mozilla/5.0 (Linux; Android 15; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36 GeoTrack/1.0"
                                         }
-                                        webViewClient = WebViewClient()
-                                        webChromeClient = WebChromeClient()
+                                        webViewClient = object : WebViewClient() {
+                                            override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
+                                                super.onReceivedError(view, errorCode, description, failingUrl)
+                                                Log.e("GeoTrackMap", "WebView Error: $errorCode, $description, $failingUrl")
+                                            }
+                                        }
+                                        webChromeClient = object : WebChromeClient() {
+                                            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
+                                                consoleMessage?.let {
+                                                    Log.d("GeoTrackMapJS", "${it.messageLevel()}: ${it.message()} -- From line ${it.lineNumber()} of ${it.sourceId()}")
+                                                }
+                                                return true
+                                            }
+                                        }
                                         loadDataWithBaseURL("https://tile.openstreetmap.org/", htmlContent, "text/html", "UTF-8", null)
                                     }
                                 },
