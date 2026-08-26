@@ -36,7 +36,7 @@ jobs:
         run: |
           gradle wrapper --gradle-version 8.4
           chmod +x gradlew
-          ./gradlew :app:assembleDebug --info
+          ./gradlew :app:assembleDebug --stacktrace --info
 
       - name: 📤 Upload APK Artifact
         if: always()

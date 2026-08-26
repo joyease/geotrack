@@ -1008,7 +1008,6 @@ fun GeoTrackApp() {
                         }
 
 // 地圖視圖區域（已修正高度 100%、CSP 放行、CartoDB 免 Key 圖資、多重延遲重繪）
-                        // 地圖視圖區域（已修正高度 100%、CSP 放行、CartoDB 免 Key 圖資、多重延遲重繪）
                         Box(
                             modifier = Modifier
                                 .weight(1f)
