@@ -19,6 +19,7 @@ import android.util.Log
 import android.net.Uri
 import android.content.Intent
 import android.view.View
+import android.view.ViewGroup
 import android.view.MotionEvent
 import androidx.core.content.FileProvider
 import java.io.File
@@ -147,6 +148,7 @@ fun GeoTrackApp() {
     var isSearching by remember { mutableStateOf(false) }
     var isExporting by remember { mutableStateOf(false) }
     var isResettingData by remember { mutableStateOf(false) }
+    val webViewRef = remember { mutableStateOf<WebView?>(null) }
 
     // Fetch initial checkins & calculate stats
     fun loadRecentCheckIns() {
@@ -865,7 +867,6 @@ fun GeoTrackApp() {
                 1 -> {
                     // Screen: 打卡地圖 (主管查詢與完整全螢幕互動地圖呈現)
                     var currentTileType by remember { mutableStateOf("osm") }
-                    val webViewRef = remember { mutableStateOf<WebView?>(null) }
 
                     // Automatically perform search when opening Map tab if empty
                     LaunchedEffect(Unit) {
