@@ -1008,6 +1008,7 @@ fun GeoTrackApp() {
                         }
 
 // 地圖視圖區域（已修正高度 100%、CSP 放行、CartoDB 免 Key 圖資、多重延遲重繪）
+                        // 地圖視圖區域（已修正高度 100%、CSP 放行、CartoDB 免 Key 圖資、多重延遲重繪）
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -1214,7 +1215,7 @@ fun GeoTrackApp() {
                                         .clickable {
                                             webViewRef.value?.evaluateJavascript("recenterMap();", null) ?: searchFirestoreRecords()
                                         }
-                                Juice) {
+                                ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.Refresh, contentDescription = "重新置中", tint = Color(0xFF6750A4), modifier = Modifier.size(18.dp))
                                     }
