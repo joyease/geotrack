@@ -100,7 +100,7 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess, showToast }) => {
           <div className="w-16 h-16 rounded-2xl bg-[#EADDFF] border border-[#D0BCFF] flex items-center justify-center text-[#6750A4] mb-3 shadow-md">
             <MapPin className="w-8 h-8" />
           </div>
-          <h1 className="text-2xl font-bold text-[#1C1B1F] tracking-tight">MySportsPal</h1>
+          <h1 className="text-2xl font-bold text-[#1C1B1F] tracking-tight">MyTrackIn</h1>
           <p className="text-sm text-[#49454F] mt-1 font-medium">旅遊打卡 & 百景集章</p>
           <div className="flex items-center gap-1.5 mt-2.5 px-3 py-1 rounded-full bg-[#F3EDF7] border border-[#E7E0EC] text-[#6750A4] text-xs font-medium">
             <ShieldCheck className="w-3.5 h-3.5 text-[#6750A4]" />
@@ -163,7 +163,7 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess, showToast }) => {
             ) : (
               <>
                 <LogIn className="w-4 h-4" />
-                <span>登入 MySportsPal (Firebase 認證)</span>
+                <span>登入 MyTrackIn (Firebase 認證)</span>
               </>
             )}
           </button>

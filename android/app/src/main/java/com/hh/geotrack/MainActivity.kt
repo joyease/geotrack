@@ -624,7 +624,7 @@ fun GeoTrackApp() {
             }
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "MySportsPal",
+                text = "MyTrackIn",
                 fontWeight = FontWeight.Bold,
                 fontSize = 24.sp,
                 color = Color(0xFF6750A4)
@@ -711,7 +711,7 @@ fun GeoTrackApp() {
                         } else {
                             Icon(Icons.Default.Login, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("登入 MySportsPal (Firebase 認證)", fontWeight = FontWeight.Bold)
+                            Text("登入 MyTrackIn (Firebase 認證)", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -766,7 +766,7 @@ fun GeoTrackApp() {
                         }
                         Column {
                             Text(
-                                text = "MySportsPal",
+                                text = "MyTrackIn",
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 18.sp,
                                 color = Color(0xFF6750A4),
@@ -1140,7 +1140,7 @@ fun GeoTrackApp() {
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            mapQueryEmail = "hermanntalk@gmail.com"
+                                            mapQueryEmail = "test@gmail.com"
                                             mapQueryTrip = "TAIPEI"
                                             searchFirestoreRecords()
                                         }
@@ -1152,7 +1152,7 @@ fun GeoTrackApp() {
                                     ) {
                                         Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF6750A4), modifier = Modifier.size(15.dp))
                                         Text(
-                                            text = "輸入 hermanntalk@gmail.com 與 TAIPEI 看示範",
+                                            text = "輸入 test@gmail.com 與 TAIPEI 看示範",
                                             fontSize = 11.5.sp,
                                             color = Color(0xFF6750A4),
                                             fontWeight = FontWeight.SemiBold

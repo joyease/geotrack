@@ -18,7 +18,7 @@ export const AndroidFrame: React.FC<Props> = ({ children }) => {
             <MapPin className="w-5 h-5" />
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="font-bold text-lg tracking-tight text-[#6750A4]">MySportsPal</span>
+            <span className="font-bold text-lg tracking-tight text-[#6750A4]">MyTrackIn</span>
             <span className="hidden sm:inline text-xs text-[#79747E] font-medium">
               旅遊打卡 & 百景集章
             </span>

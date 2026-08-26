@@ -229,34 +229,6 @@ export const StampRallyScreen: React.FC<Props> = ({
     );
   };
 
-  // Mock location test function for developer / QA verification
-  const handleMockLocationTest = async (mockAttraction: Attraction) => {
-    setIsScanning(true);
-    setUserLocation({ lat: mockAttraction.lat, lng: mockAttraction.lng });
-    
-    // Simulate short calculation delay
-    await new Promise(r => setTimeout(r, 400));
-
-    if (stampsMap.has(mockAttraction.id)) {
-      const existing = stampsMap.get(mockAttraction.id)!;
-      showToast(`[測試模式] 您在 ${existing.dateString} 已經在 [${mockAttraction.name}] 完成打卡蓋章囉！`, 'info');
-    } else {
-      const todayStr = new Date().toISOString().split('T')[0];
-      const newStamp: UserStamp = {
-        attractionId: mockAttraction.id,
-        name: mockAttraction.name,
-        stampedAt: new Date().toISOString(),
-        dateString: todayStr
-      };
-
-      await StorageService.saveUserStamp(currentUser.uid, newStamp);
-      onStampUnlocked(newStamp);
-      setCelebratingAttraction(mockAttraction);
-      showToast(`[測試模式] 恭喜在 [${mockAttraction.name}] 完成打卡！`, 'success');
-    }
-    setIsScanning(false);
-  };
-
   return (
     <div className="flex-1 flex flex-col bg-[#FBF8FD] overflow-y-auto pb-8">
       {/* Top Header Card */}
@@ -733,27 +705,20 @@ export const StampRallyScreen: React.FC<Props> = ({
 
             {/* Actions */}
             <div className="space-y-2 pt-1">
-              {!stampsMap.has(selectedAttractionDetail.attraction.id) ? (
-                <button
-                  onClick={() => {
-                    const att = selectedAttractionDetail.attraction;
-                    setSelectedAttractionDetail(null);
-                    handleMockLocationTest(att);
-                  }}
-                  className="w-full py-2.5 bg-[#6750A4] hover:bg-[#523e85] text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
-                >
-                  <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>🧪 模擬定位此景點測試 (Mock Location)</span>
-                </button>
-              ) : (
-                <div className="text-center py-1 text-xs text-[#2E7D32] font-bold flex items-center justify-center gap-1">
+              {stampsMap.has(selectedAttractionDetail.attraction.id) ? (
+                <div className="text-center py-2 px-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-[#2E7D32] font-bold flex items-center justify-center gap-1.5">
                   <CheckCircle2 className="w-4 h-4" />
                   <span>已於 {stampsMap.get(selectedAttractionDetail.attraction.id)!.dateString} 成功解鎖！</span>
+                </div>
+              ) : (
+                <div className="text-center py-2 px-3 rounded-xl bg-[#F3EDF7] border border-[#E7E0EC] text-[11px] text-[#6750A4] font-medium flex items-center justify-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5" />
+                  <span>請至現場點擊上方「現場 GPS 蓋章 (200m)」完成打卡</span>
                 </div>
               )}
               <button
                 onClick={() => setSelectedAttractionDetail(null)}
-                className="w-full py-2 bg-white border border-[#CAC4D0] hover:bg-[#F3EDF7] text-[#49454F] font-bold text-xs rounded-xl transition-all cursor-pointer"
+                className="w-full py-2.5 bg-[#6750A4] hover:bg-[#523e85] text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
               >
                 關閉
               </button>

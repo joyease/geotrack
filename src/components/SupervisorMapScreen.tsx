@@ -370,11 +370,11 @@ export const SupervisorMapScreen: React.FC<Props> = ({
         <div className="flex items-center justify-between text-[11px] pt-0.5 text-[#49454F]">
           <button
             type="button"
-            onClick={() => applyPreset('hermanntalk@gmail.com', 'TAIPEI')}
+            onClick={() => applyPreset('test@gmail.com', 'TAIPEI')}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-[#F7F2FA] hover:bg-[#EADDFF] text-[#6750A4] border border-[#E7E0EC] font-medium cursor-pointer transition-colors"
           >
             <Sparkles className="w-3.5 h-3.5 text-[#6750A4] shrink-0" />
-            <span>輸入 hermanntalk@gmail.com 與 TAIPEI 看示範</span>
+            <span>輸入 test@gmail.com 與 TAIPEI 看示範</span>
           </button>
         </div>
 

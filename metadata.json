@@ -1,6 +1,6 @@
 {
-  "name": "GeoCheckin Supervisor",
-  "description": "MySportsPal - 旅遊打卡 & 百景集章，結合 GPS 現場定位核銷與雙北景點集章探索。",
+  "name": "MyTrackIn",
+  "description": "MyTrackIn - 旅遊打卡 & 百景集章，結合 GPS 現場定位核銷與雙北景點集章探索。",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
