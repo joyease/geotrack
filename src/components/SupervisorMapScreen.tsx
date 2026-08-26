@@ -140,19 +140,21 @@ export const SupervisorMapScreen: React.FC<Props> = ({
     const bgColor = isLast ? '#B3261E' : isFirst ? '#059669' : '#6750A4';
     const ringColor = isLast ? '#F9DEDC' : isFirst ? '#D1FAE5' : '#EADDFF';
 
+    // Total width: 30px, Total height: 38px (circle 30x30 + pointer triangle 8px)
+    // Anchor at center bottom: x = 15, y = 38
     return L.divIcon({
       className: 'custom-leaflet-marker',
       html: `
-        <div style="transform: translate(-50%, -100%); display: flex; flex-direction: column; align-items: center;">
-          <div style="background-color: ${bgColor}; color: #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 11px; box-shadow: 0 4px 10px rgba(0,0,0,0.25); border: 2.5px solid ${ringColor}; font-family: Roboto, sans-serif;">
+        <div style="width: 30px; height: 38px; display: flex; flex-direction: column; align-items: center; justify-content: flex-start; margin: 0; padding: 0; box-sizing: border-box;">
+          <div style="background-color: ${bgColor}; color: #ffffff; width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 12px; box-shadow: 0 3px 8px rgba(0,0,0,0.35); border: 2.5px solid ${ringColor}; font-family: Roboto, sans-serif; box-sizing: border-box;">
             ${index + 1}
           </div>
-          <div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 6px solid ${bgColor}; margin-top: -1px;"></div>
+          <div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid ${bgColor}; margin-top: -1px;"></div>
         </div>
       `,
-      iconSize: [28, 34],
-      iconAnchor: [14, 34],
-      popupAnchor: [0, -34]
+      iconSize: [30, 38],
+      iconAnchor: [15, 38],
+      popupAnchor: [0, -40]
     });
   };
 
@@ -168,7 +170,7 @@ export const SupervisorMapScreen: React.FC<Props> = ({
 
     if (records.length === 0) return;
 
-    const latLngs: L.LatLngExpression[] = [];
+    const latLngs: [number, number][] = [];
 
     records.forEach((record, idx) => {
       const lat = record.location.latitude;
@@ -189,13 +191,18 @@ export const SupervisorMapScreen: React.FC<Props> = ({
       const username = record.userEmail ? record.userEmail.split('@')[0] : 'user';
 
       const popupHtml = `
-        <div class="px-2 py-1 text-center font-bold text-xs text-[#1C1B1F] whitespace-nowrap" style="text-shadow: 0 1px 3px rgba(255,255,255,0.9), 0 0 6px rgba(255,255,255,0.9), 0 0 2px rgba(255,255,255,1);">
-          <div class="text-[#1C1B1F] font-bold text-xs">${username}</div>
-          <div class="text-[11px] font-semibold text-[#49454F]">${formattedTime}</div>
+        <div class="px-2.5 py-1.5 bg-white/95 backdrop-blur-md rounded-xl border border-[#E7E0EC] shadow-md text-center">
+          <div class="text-[#1C1B1F] font-bold text-xs">#${idx + 1} ${username}</div>
+          <div class="text-[10px] font-bold text-[#6750A4] font-mono">${record.tripCode}</div>
+          <div class="text-[10px] font-medium text-[#49454F]">${formattedTime}</div>
         </div>
       `;
 
-      marker.bindPopup(popupHtml, { className: 'custom-popup' });
+      marker.bindPopup(popupHtml, { 
+        className: 'custom-popup',
+        offset: [0, -4],
+        closeButton: false
+      });
 
       // Automatically open the latest stop popup
       if (idx === records.length - 1) {

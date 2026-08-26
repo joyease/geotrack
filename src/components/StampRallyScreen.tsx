@@ -147,86 +147,113 @@ export const StampRallyScreen: React.FC<Props> = ({
       .filter(item => checkIsMatching(item.attraction));
   }, [latSorted100Attractions, selectedFilter, searchQuery, stampsMap]);
 
-  // Core Geofencing & Stamp Logic (Dual Safety Guard)
-  const handleScanAndStamp = async (manualTargetAttraction?: Attraction) => {
+  // Core Real GPS Geofencing & Stamp Logic
+  const handleRealGpsStamp = () => {
+    if (isScanning) return;
     setIsScanning(true);
 
-    // Simulate GPS acquisition delay
-    await new Promise(r => setTimeout(r, 650));
+    if (!('geolocation' in navigator)) {
+      showToast('請開啟定位權限以進行打卡', 'error');
+      setIsScanning(false);
+      return;
+    }
 
-    let currentLat = userLocation.lat;
-    let currentLng = userLocation.lng;
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const userLat = pos.coords.latitude;
+          const userLng = pos.coords.longitude;
+          setUserLocation({ lat: userLat, lng: userLng });
 
-    // If manual target is clicked for preview testing
-    if (manualTargetAttraction) {
-      currentLat = manualTargetAttraction.lat;
-      currentLng = manualTargetAttraction.lng;
-      setUserLocation({ lat: currentLat, lng: currentLng });
-    } else if ('geolocation' in navigator) {
-      try {
-        const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-          navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 6000
+          // Step 1: Calculate Haversine distance to all 100 attractions
+          const attractionsWithDistances = NORTH_TAIWAN_100_ATTRACTIONS.map(att => {
+            const dist = calculateDistanceMeters(userLat, userLng, att.lat, att.lng);
+            return { attraction: att, distance: dist };
           });
-        });
-        currentLat = pos.coords.latitude;
-        currentLng = pos.coords.longitude;
-        setUserLocation({ lat: currentLat, lng: currentLng });
-      } catch {
-        // Keep current coordinates
+
+          // Step 2: Check all un-unlocked attractions within 200m (0.2km)
+          const unstampedWithin200m = attractionsWithDistances.filter(
+            item => item.distance <= 200 && !stampsMap.has(item.attraction.id)
+          );
+
+          if (unstampedWithin200m.length > 0) {
+            // Pick closest un-stamped attraction
+            const closest = unstampedWithin200m.reduce((min, curr) =>
+              curr.distance < min.distance ? curr : min
+            );
+            const targetAtt = closest.attraction;
+            const todayStr = new Date().toISOString().split('T')[0];
+            const newStamp: UserStamp = {
+              attractionId: targetAtt.id,
+              name: targetAtt.name,
+              stampedAt: new Date().toISOString(),
+              dateString: todayStr
+            };
+
+            await StorageService.saveUserStamp(currentUser.uid, newStamp);
+            onStampUnlocked(newStamp);
+            setCelebratingAttraction(targetAtt);
+            showToast(`恭喜在 [${targetAtt.name}] 完成打卡！`, 'success');
+          } else {
+            // Check if user is within 200m of an already unlocked attraction
+            const alreadyStamped = attractionsWithDistances.filter(
+              item => item.distance <= 200 && stampsMap.has(item.attraction.id)
+            );
+
+            if (alreadyStamped.length > 0) {
+              const att = alreadyStamped[0].attraction;
+              const existing = stampsMap.get(att.id)!;
+              showToast(`您在 ${existing.dateString} 已經在 [${att.name}] 完成打卡蓋章囉！`, 'info');
+            } else {
+              // All attractions > 200m
+              showToast('目前位置附近 200 公尺內沒有可打卡的景點', 'error');
+            }
+          }
+        } catch (err) {
+          console.error('Save stamp error:', err);
+          showToast('打卡處理發生錯誤，請稍後再試', 'error');
+        } finally {
+          setIsScanning(false);
+        }
+      },
+      (err) => {
+        console.warn('Geolocation error:', err);
+        showToast('請開啟定位權限以進行打卡', 'error');
+        setIsScanning(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
       }
-    }
+    );
+  };
 
-    // Step 2: Compute distance to all 100 attractions
-    const attractionsWithDistance = NORTH_TAIWAN_100_ATTRACTIONS.map(att => {
-      const dist = calculateDistanceMeters(currentLat, currentLng, att.lat, att.lng);
-      return { attraction: att, distance: dist };
-    });
+  // Mock location test function for developer / QA verification
+  const handleMockLocationTest = async (mockAttraction: Attraction) => {
+    setIsScanning(true);
+    setUserLocation({ lat: mockAttraction.lat, lng: mockAttraction.lng });
+    
+    // Simulate short calculation delay
+    await new Promise(r => setTimeout(r, 400));
 
-    // Step 3: Filter attractions within 200 meters
-    const within200m = attractionsWithDistance.filter(item => item.distance <= 200);
-
-    if (within200m.length > 0) {
-      // Step 4: Closest Attraction Priority
-      const closest = within200m.reduce((min, curr) => (curr.distance < min.distance ? curr : min));
-      const targetAtt = closest.attraction;
-
-      // Anti-Duplicate Stamp check
-      if (stampsMap.has(targetAtt.id)) {
-        const existing = stampsMap.get(targetAtt.id)!;
-        showToast(`您在 ${existing.dateString} 已經蓋過【${targetAtt.name}】的章囉！`, 'info');
-      } else {
-        // Unlock new stamp!
-        const todayStr = new Date().toISOString().split('T')[0];
-        const newStamp: UserStamp = {
-          attractionId: targetAtt.id,
-          name: targetAtt.name,
-          stampedAt: new Date().toISOString(),
-          dateString: todayStr
-        };
-
-        await StorageService.saveUserStamp(currentUser.uid, newStamp);
-        onStampUnlocked(newStamp);
-        setCelebratingAttraction(targetAtt);
-        showToast(`🎉 恭喜成功蓋章：${targetAtt.name}！`, 'success');
-      }
+    if (stampsMap.has(mockAttraction.id)) {
+      const existing = stampsMap.get(mockAttraction.id)!;
+      showToast(`[測試模式] 您在 ${existing.dateString} 已經在 [${mockAttraction.name}] 完成打卡蓋章囉！`, 'info');
     } else {
-      // Step 5: No attraction within 200m -> find closest overall
-      const closestOverall = attractionsWithDistance.reduce((min, curr) =>
-        curr.distance < min.distance ? curr : min
-      );
-      const distFormatted =
-        closestOverall.distance >= 1000
-          ? `${(closestOverall.distance / 1000).toFixed(1)} 公里`
-          : `${closestOverall.distance} 公尺`;
+      const todayStr = new Date().toISOString().split('T')[0];
+      const newStamp: UserStamp = {
+        attractionId: mockAttraction.id,
+        name: mockAttraction.name,
+        stampedAt: new Date().toISOString(),
+        dateString: todayStr
+      };
 
-      showToast(
-        `目前不在集章範圍內！距離最近的【${closestOverall.attraction.name}】還有 ${distFormatted}，請靠近後再試！`,
-        'error'
-      );
+      await StorageService.saveUserStamp(currentUser.uid, newStamp);
+      onStampUnlocked(newStamp);
+      setCelebratingAttraction(mockAttraction);
+      showToast(`[測試模式] 恭喜在 [${mockAttraction.name}] 完成打卡！`, 'success');
     }
-
     setIsScanning(false);
   };
 
@@ -268,14 +295,14 @@ export const StampRallyScreen: React.FC<Props> = ({
             {/* GPS Scan & Stamp Button */}
             <button
               id="btn-scan-stamp"
-              onClick={() => handleScanAndStamp()}
+              onClick={handleRealGpsStamp}
               disabled={isScanning}
               className="px-3.5 py-2 bg-[#6750A4] hover:bg-[#523e85] active:scale-[0.98] text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-75 shrink-0"
             >
               {isScanning ? (
                 <>
                   <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>掃描中...</span>
+                  <span>定位比對中...</span>
                 </>
               ) : (
                 <>
@@ -534,12 +561,13 @@ export const StampRallyScreen: React.FC<Props> = ({
                   <div
                     key={att.id}
                     id={`attraction-card-${att.id}`}
-                    className={`bg-white rounded-xl p-3 border transition-all flex items-center justify-between gap-3 ${
+                    onClick={() => setSelectedAttractionDetail(item)}
+                    className={`bg-white rounded-xl p-3 border transition-all flex items-center justify-between gap-3 cursor-pointer ${
                       isUnlocked
                         ? 'border-[#B3261E]/30 shadow-xs bg-[#FFFBFB]'
                         : isWithin200
                         ? 'border-[#2E7D32] bg-[#F1F8E9]'
-                        : 'border-[#E7E0EC] hover:border-[#6750A4]/40'
+                        : 'border-[#E7E0EC] hover:border-[#6750A4]/40 hover:bg-[#FDFBFF]'
                     }`}
                   >
                     {/* Left Info */}
@@ -556,7 +584,7 @@ export const StampRallyScreen: React.FC<Props> = ({
                         </span>
                         {isWithin200 && !isUnlocked && (
                           <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#2E7D32] text-white animate-pulse">
-                            可蓋章!
+                            在200m範圍內
                           </span>
                         )}
                       </div>
@@ -572,16 +600,9 @@ export const StampRallyScreen: React.FC<Props> = ({
                           <MapPin className="w-3 h-3" />
                           距離 {distanceStr}
                         </span>
-
-                        {/* Quick Test Simulator Button */}
-                        {!isUnlocked && (
-                          <button
-                            onClick={() => handleScanAndStamp(att)}
-                            className="text-[10px] text-[#6750A4] hover:underline font-bold ml-auto cursor-pointer"
-                          >
-                            [模擬抵達蓋章]
-                          </button>
-                        )}
+                        <span className="text-[10px] text-[#79747E] ml-auto">
+                          點擊查看詳情
+                        </span>
                       </div>
                     </div>
 
@@ -717,12 +738,12 @@ export const StampRallyScreen: React.FC<Props> = ({
                   onClick={() => {
                     const att = selectedAttractionDetail.attraction;
                     setSelectedAttractionDetail(null);
-                    handleScanAndStamp(att);
+                    handleMockLocationTest(att);
                   }}
                   className="w-full py-2.5 bg-[#6750A4] hover:bg-[#523e85] text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer flex items-center justify-center gap-1.5"
                 >
                   <Sparkles className="w-4 h-4 text-amber-300" />
-                  <span>🧪 模擬抵達現場 200m 蓋章</span>
+                  <span>🧪 模擬定位此景點測試 (Mock Location)</span>
                 </button>
               ) : (
                 <div className="text-center py-1 text-xs text-[#2E7D32] font-bold flex items-center justify-center gap-1">

@@ -9,6 +9,11 @@
   z-index: 10;
 }
 
+.custom-leaflet-marker {
+  background: transparent !important;
+  border: none !important;
+}
+
 .custom-popup .leaflet-popup-content-wrapper {
   background: transparent;
   color: #1C1B1F;
