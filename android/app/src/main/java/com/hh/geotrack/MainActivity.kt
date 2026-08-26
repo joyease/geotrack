@@ -207,6 +207,7 @@ fun GeoTrackApp() {
     var stampFilterTab by remember { mutableStateOf("全部") }
     var stampSearchQuery by remember { mutableStateOf("") }
     var stampCelebrationTarget by remember { mutableStateOf<Attraction?>(null) }
+    var selectedAttractionDetail by remember { mutableStateOf<Attraction?>(null) }
 
     fun loadUserStamps() {
         val currentUserId = auth.currentUser?.uid ?: "usr_test_01"
@@ -326,7 +327,7 @@ fun GeoTrackApp() {
             }
     }
 
-    fun scanAndStampAttraction(manualTarget: Attraction? = null) {
+    fun scanAndStampAttraction() {
         val currentAuth = auth.currentUser
         if (currentAuth == null) {
             Toast.makeText(context, "請先通過 Firebase 登入認證後再進行集章！", Toast.LENGTH_LONG).show()
@@ -334,38 +335,6 @@ fun GeoTrackApp() {
             return
         }
         val currentUserId = currentAuth.uid
-
-        if (manualTarget != null) {
-            val targetAtt = manualTarget
-            if (userStamps.containsKey(targetAtt.id)) {
-                val existing = userStamps[targetAtt.id]
-                Toast.makeText(context, "您在 ${existing?.dateString} 已經蓋過【${targetAtt.name}】的章囉！", Toast.LENGTH_SHORT).show()
-                return
-            }
-            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
-            val dateStr = sdf.format(Date())
-            val newRecord = UserStampRecord(targetAtt.id, targetAtt.name, Date(), dateStr)
-
-            val stampData = hashMapOf(
-                "attractionId" to targetAtt.id,
-                "name" to targetAtt.name,
-                "stampedAt" to FieldValue.serverTimestamp()
-            )
-            firestore.collection("users").document(currentUserId).collection("stamps")
-                .document(targetAtt.id.toString())
-                .set(stampData)
-                .addOnSuccessListener {
-                    userStamps = userStamps + (targetAtt.id to newRecord)
-                    stampCelebrationTarget = targetAtt
-                    Toast.makeText(context, "🎉 恭喜成功蓋章：${targetAtt.name}！", Toast.LENGTH_SHORT).show()
-                }
-                .addOnFailureListener {
-                    userStamps = userStamps + (targetAtt.id to newRecord)
-                    stampCelebrationTarget = targetAtt
-                    Toast.makeText(context, "🎉 恭喜成功蓋章：${targetAtt.name}！", Toast.LENGTH_SHORT).show()
-                }
-            return
-        }
 
         if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
             locationPermissionLauncher.launch(
@@ -411,12 +380,12 @@ fun GeoTrackApp() {
                                 .addOnSuccessListener {
                                     userStamps = userStamps + (closest.id to newRecord)
                                     stampCelebrationTarget = closest
-                                    Toast.makeText(context, "🎉 恭喜成功蓋章：${closest.name}！", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "🎉 恭喜在 [${closest.name}] 完成打卡！", Toast.LENGTH_SHORT).show()
                                 }
                                 .addOnFailureListener {
                                     userStamps = userStamps + (closest.id to newRecord)
                                     stampCelebrationTarget = closest
-                                    Toast.makeText(context, "🎉 恭喜成功蓋章：${closest.name}！", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, "🎉 恭喜在 [${closest.name}] 完成打卡！", Toast.LENGTH_SHORT).show()
                                 }
                         }
                     } else {
@@ -426,7 +395,7 @@ fun GeoTrackApp() {
                         } else {
                             "${closestOverall.second.toInt()} 公尺"
                         }
-                        Toast.makeText(context, "目前不在景點 200m 範圍內！距離最近的【${closestOverall.first.name}】還有 $distFormatted", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, "目前位置附近 200 公尺內沒有可打卡的景點 (距離最近的【${closestOverall.first.name}】還有 $distFormatted)", Toast.LENGTH_LONG).show()
                     }
                 }
                 .addOnFailureListener {
@@ -1753,7 +1722,7 @@ fun GeoTrackApp() {
                                                 modifier = Modifier
                                                     .weight(1f)
                                                     .clickable {
-                                                        scanAndStampAttraction(att)
+                                                        selectedAttractionDetail = att
                                                     }
                                             ) {
                                                 Column(
@@ -2283,6 +2252,174 @@ fun GeoTrackApp() {
                         }
                     }
                 }
+            }
+
+            // Attraction Detail Info Dialog (點擊印章時僅顯示景點資訊)
+            selectedAttractionDetail?.let { att ->
+                val isUnlocked = userStamps.containsKey(att.id)
+                val stampRec = userStamps[att.id]
+                val distArr = FloatArray(1)
+                Location.distanceBetween(currentLatitude, currentLongitude, att.lat, att.lng, distArr)
+                val distMeters = distArr[0]
+                val distFormatted = if (distMeters >= 1000f) {
+                    String.format(Locale.US, "%.2f 公里", distMeters / 1000f)
+                } else {
+                    "${distMeters.toInt()} 公尺"
+                }
+
+                AlertDialog(
+                    onDismissRequest = { selectedAttractionDetail = null },
+                    icon = {
+                        Surface(
+                            shape = CircleShape,
+                            color = if (isUnlocked) Color(0xFFFFF5F5) else Color(0xFFEADDFF),
+                            border = BorderStroke(1.5.dp, if (isUnlocked) Color(0xFFB3261E) else Color(0xFFD0BCFF)),
+                            modifier = Modifier.size(56.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                if (isUnlocked) {
+                                    Text("★", fontSize = 24.sp, color = Color(0xFFB3261E), fontWeight = FontWeight.Bold)
+                                } else {
+                                    Icon(Icons.Default.Place, contentDescription = null, tint = Color(0xFF6750A4), modifier = Modifier.size(28.dp))
+                                }
+                            }
+                        }
+                    },
+                    title = {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "#${String.format(Locale.US, "%03d", att.id)} ${att.name}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 17.sp,
+                                color = Color(0xFF1D1B20),
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Surface(
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = Color(0xFFF3EDF7)
+                                ) {
+                                    Text(
+                                        text = "${att.city} · ${att.district}",
+                                        fontSize = 11.sp,
+                                        color = Color(0xFF6750A4),
+                                        fontWeight = FontWeight.SemiBold,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    text = {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Info block
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color(0xFFF7F2FA),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("行政區域", fontSize = 12.sp, color = Color(0xFF79747E))
+                                        Text("${att.city} ${att.district}", fontSize = 12.sp, fontWeight = FontWeight.SemiBold, color = Color(0xFF1D1B20))
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("經緯度座標", fontSize = 12.sp, color = Color(0xFF79747E))
+                                        Text(
+                                            text = String.format(Locale.US, "%.4f°N, %.4f°E", att.lat, att.lng),
+                                            fontSize = 12.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = Color(0xFF6750A4)
+                                        )
+                                    }
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("目前距離", fontSize = 12.sp, color = Color(0xFF79747E))
+                                        Text(distFormatted, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                                    }
+                                }
+                            }
+
+                            // Unlock status banner
+                            if (isUnlocked) {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFE8F5E9),
+                                    border = BorderStroke(1.dp, Color(0xFFC8E6C9)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF2E7D32), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "已於 ${stampRec?.dateString ?: "今日"} 成功解鎖！",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF2E7D32)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Surface(
+                                    shape = RoundedCornerShape(10.dp),
+                                    color = Color(0xFFF3EDF7),
+                                    border = BorderStroke(1.dp, Color(0xFFE7E0EC)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(10.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.Center
+                                    ) {
+                                        Icon(Icons.Default.LocationOn, contentDescription = null, tint = Color(0xFF6750A4), modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "請至現場點擊上方「現場 GPS 蓋章 (200m)」完成打卡",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color(0xFF6750A4)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { selectedAttractionDetail = null },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                        ) {
+                            Text("關閉", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    },
+                    shape = RoundedCornerShape(20.dp),
+                    containerColor = Color.White
+                )
             }
 
             // Stamp Unlocked Celebration Dialog
