@@ -21,7 +21,23 @@ export interface AuthUser {
   displayName?: string;
 }
 
-export type NavigationTab = 'checkin' | 'map' | 'profile';
+export type NavigationTab = 'checkin' | 'map' | 'stamps' | 'profile';
+
+export interface Attraction {
+  id: number;
+  name: string;
+  city: string;
+  district: string;
+  lat: number;
+  lng: number;
+}
+
+export interface UserStamp {
+  attractionId: number;
+  name: string;
+  stampedAt: string;
+  dateString: string;
+}
 
 export interface ToastMessage {
   id: string;

@@ -18,13 +18,17 @@ interface Props {
   onLogout: () => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
   onViewTripOnMap?: (tripCode: string) => void;
+  userStampsCount?: number;
+  onNavigateToStamps?: () => void;
 }
 
 export const ProfileScreen: React.FC<Props> = ({
   currentUser,
   onLogout,
   showToast,
-  onViewTripOnMap
+  onViewTripOnMap,
+  userStampsCount = 0,
+  onNavigateToStamps
 }) => {
   const [summary, setSummary] = useState<{
     uniqueTripCodesCount: number;
@@ -128,7 +132,7 @@ export const ProfileScreen: React.FC<Props> = ({
     <div id="screen-profile" className="flex-1 flex flex-col p-5 overflow-y-auto space-y-4 pb-8 bg-white text-[#1C1B1F]">
       {/* Screen Header */}
       <div>
-        <h1 className="text-2xl font-semibold tracking-tight text-[#1C1B1F]">關於我</h1>
+        <h1 className="text-2xl font-semibold tracking-tight text-[#1C1B1F]">個人中心</h1>
       </div>
 
       {/* User Hero Avatar Section */}
@@ -159,6 +163,38 @@ export const ProfileScreen: React.FC<Props> = ({
             {isLoading ? '...' : summary.totalCheckInsCount}
           </span>
           <span className="text-xs text-[#49454F] font-bold mt-1.5">打卡總次數</span>
+        </div>
+      </div>
+
+      {/* Stamp Rally Progress Card */}
+      <div className="bg-gradient-to-r from-[#FFF5F5] to-[#FEF7FF] border border-[#B3261E]/30 rounded-2xl p-4 shadow-xs space-y-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-full bg-[#B3261E] text-white flex items-center justify-center text-xs font-bold">
+              ★
+            </div>
+            <h3 className="text-xs font-bold text-[#1D1B20]">雙北百景集章進度</h3>
+          </div>
+          <span className="text-xs font-bold text-[#B3261E]">
+            {userStampsCount} / 100 點
+          </span>
+        </div>
+        <div className="h-2 w-full bg-[#E7E0EC] rounded-full overflow-hidden">
+          <div
+            className="h-full bg-gradient-to-r from-[#6750A4] to-[#B3261E] rounded-full"
+            style={{ width: `${Math.min(100, Math.max(2, (userStampsCount / 100) * 100))}%` }}
+          />
+        </div>
+        <div className="flex items-center justify-between text-[11px] text-[#49454F] pt-1">
+          <span>達成率: {((userStampsCount / 100) * 100).toFixed(1)}%</span>
+          {onNavigateToStamps && (
+            <button
+              onClick={onNavigateToStamps}
+              className="text-[#6750A4] font-bold hover:underline cursor-pointer"
+            >
+              前往集章 →
+            </button>
+          )}
         </div>
       </div>
 

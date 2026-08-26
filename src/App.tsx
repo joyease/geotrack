@@ -3,8 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
-import { AuthUser, NavigationTab, ToastMessage } from './types';
+import React, { useState, useEffect } from 'react';
+import { AuthUser, NavigationTab, ToastMessage, UserStamp } from './types';
 import { StorageService } from './services/storage';
 import { AndroidFrame } from './components/AndroidFrame';
 import { MaterialBottomNav } from './components/MaterialBottomNav';
@@ -12,6 +12,7 @@ import { MaterialToastContainer } from './components/MaterialToast';
 import { LoginScreen } from './components/LoginScreen';
 import { CheckInScreen } from './components/CheckInScreen';
 import { SupervisorMapScreen } from './components/SupervisorMapScreen';
+import { StampRallyScreen } from './components/StampRallyScreen';
 import { ProfileScreen } from './components/ProfileScreen';
 import { CodeViewerModal } from './components/CodeViewerModal';
 
@@ -20,10 +21,24 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<NavigationTab>('checkin');
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
   const [isCodeModalOpen, setIsCodeModalOpen] = useState(false);
+  const [userStamps, setUserStamps] = useState<UserStamp[]>([]);
 
   // Deep-link state for supervisor map query
   const [mapPrefillEmail, setMapPrefillEmail] = useState('');
   const [mapPrefillTripCode, setMapPrefillTripCode] = useState('');
+
+  // Load user stamps
+  useEffect(() => {
+    if (currentUser) {
+      const localStamps = StorageService.getUserStamps(currentUser.uid);
+      setUserStamps(localStamps);
+      StorageService.loadFirestoreStamps(currentUser.uid).then(stamps => {
+        if (stamps && stamps.length > 0) {
+          setUserStamps(stamps);
+        }
+      });
+    }
+  }, [currentUser?.uid]);
 
   const showToast = (message: string, type: 'success' | 'error' | 'info' = 'info') => {
     const newToast: ToastMessage = {
@@ -60,6 +75,13 @@ export default function App() {
     }
   };
 
+  const handleStampUnlocked = (newStamp: UserStamp) => {
+    setUserStamps(prev => {
+      if (prev.some(s => s.attractionId === newStamp.attractionId)) return prev;
+      return [...prev, newStamp];
+    });
+  };
+
   return (
     <AndroidFrame onOpenCodeViewer={() => setIsCodeModalOpen(true)}>
       {/* Active Screen Area */}
@@ -83,18 +105,32 @@ export default function App() {
                   showToast={showToast}
                 />
               )}
+              {activeTab === 'stamps' && (
+                <StampRallyScreen
+                  currentUser={currentUser}
+                  showToast={showToast}
+                  userStamps={userStamps}
+                  onStampUnlocked={handleStampUnlocked}
+                />
+              )}
               {activeTab === 'profile' && (
                 <ProfileScreen
                   currentUser={currentUser}
                   onLogout={handleLogout}
                   showToast={showToast}
                   onViewTripOnMap={handleProfileTripClick}
+                  userStampsCount={userStamps.length}
+                  onNavigateToStamps={() => setActiveTab('stamps')}
                 />
               )}
             </div>
 
-            {/* Bottom Material 3 Navigation Bar */}
-            <MaterialBottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+            {/* Bottom Material 3 Navigation Bar (4 tabs) */}
+            <MaterialBottomNav
+              activeTab={activeTab}
+              onTabChange={setActiveTab}
+              unlockedStampsCount={userStamps.length}
+            />
           </>
         )}
       </main>

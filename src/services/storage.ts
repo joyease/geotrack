@@ -1,7 +1,9 @@
-import { CheckInRecord, AuthUser, GeoPoint } from '../types';
+import { CheckInRecord, AuthUser, GeoPoint, UserStamp } from '../types';
 import { db } from './firebase';
 import { 
   collection, 
+  doc,
+  setDoc,
   addDoc, 
   getDocs, 
   query, 
@@ -13,6 +15,7 @@ import {
 
 const STORAGE_CHECKINS_KEY = 'geocheckin_firestore_checkins';
 const STORAGE_USER_KEY = 'geocheckin_firebase_auth_user';
+const STORAGE_STAMPS_KEY_PREFIX = 'geocheckin_user_stamps_';
 
 // Pre-seeded high quality check-in records for immediate supervisor demoing
 const SEED_CHECKINS: CheckInRecord[] = [
@@ -255,5 +258,97 @@ export const StorageService = {
 
   resetDemoData(): void {
     localStorage.setItem(STORAGE_CHECKINS_KEY, JSON.stringify(SEED_CHECKINS));
+  },
+
+  // Stamp Rally Persistence
+  getUserStamps(userId: string): UserStamp[] {
+    const key = `${STORAGE_STAMPS_KEY_PREFIX}${userId}`;
+    const raw = localStorage.getItem(key);
+    if (!raw) {
+      // Return default initial stamps (e.g. 101 observation desk unlocked for Hermann)
+      const defaultStamps: UserStamp[] = [
+        {
+          attractionId: 1,
+          name: '台北101觀景台',
+          stampedAt: new Date(Date.now() - 86400000 * 2).toISOString(),
+          dateString: new Date(Date.now() - 86400000 * 2).toISOString().split('T')[0]
+        },
+        {
+          attractionId: 2,
+          name: '象山六巨石',
+          stampedAt: new Date(Date.now() - 86400000 * 1).toISOString(),
+          dateString: new Date(Date.now() - 86400000 * 1).toISOString().split('T')[0]
+        },
+        {
+          attractionId: 28,
+          name: '華山1914文創園區',
+          stampedAt: new Date().toISOString(),
+          dateString: new Date().toISOString().split('T')[0]
+        }
+      ];
+      localStorage.setItem(key, JSON.stringify(defaultStamps));
+      return defaultStamps;
+    }
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  },
+
+  async saveUserStamp(userId: string, stamp: UserStamp): Promise<void> {
+    const key = `${STORAGE_STAMPS_KEY_PREFIX}${userId}`;
+    const existing = this.getUserStamps(userId);
+    if (!existing.some(s => s.attractionId === stamp.attractionId)) {
+      const updated = [...existing, stamp];
+      localStorage.setItem(key, JSON.stringify(updated));
+    }
+
+    // Persist to Cloud Firestore: users/{userId}/stamps/{attractionId}
+    try {
+      const stampDocRef = doc(db, 'users', userId, 'stamps', stamp.attractionId.toString());
+      await setDoc(stampDocRef, {
+        attractionId: stamp.attractionId,
+        name: stamp.name,
+        stampedAt: serverTimestamp()
+      }, { merge: true });
+      console.log(`✅ Stamp saved to Firestore: users/${userId}/stamps/${stamp.attractionId}`);
+    } catch (err) {
+      console.warn('Firestore stamp save fallback:', err);
+    }
+  },
+
+  async loadFirestoreStamps(userId: string): Promise<UserStamp[]> {
+    try {
+      const stampsColRef = collection(db, 'users', userId, 'stamps');
+      const snap = await getDocs(stampsColRef);
+      if (!snap.empty) {
+        const firestoreStamps: UserStamp[] = [];
+        snap.forEach(d => {
+          const data = d.data();
+          let dStr = new Date().toISOString().split('T')[0];
+          let isoStr = new Date().toISOString();
+          if (data.stampedAt instanceof Timestamp) {
+            const dateObj = data.stampedAt.toDate();
+            dStr = dateObj.toISOString().split('T')[0];
+            isoStr = dateObj.toISOString();
+          }
+          firestoreStamps.push({
+            attractionId: data.attractionId || parseInt(d.id, 10),
+            name: data.name || '',
+            stampedAt: isoStr,
+            dateString: dStr
+          });
+        });
+        if (firestoreStamps.length > 0) {
+          const key = `${STORAGE_STAMPS_KEY_PREFIX}${userId}`;
+          localStorage.setItem(key, JSON.stringify(firestoreStamps));
+          return firestoreStamps;
+        }
+      }
+    } catch (err) {
+      console.warn('Load Firestore stamps error:', err);
+    }
+    return this.getUserStamps(userId);
   }
 };

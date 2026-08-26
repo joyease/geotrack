@@ -1,14 +1,15 @@
 import React from 'react';
 import { NavigationTab } from '../types';
-import { MapPin, Map, User } from 'lucide-react';
+import { MapPin, Map, Trophy, User } from 'lucide-react';
 
 interface Props {
   activeTab: NavigationTab;
   onTabChange: (tab: NavigationTab) => void;
+  unlockedStampsCount?: number;
 }
 
-export const MaterialBottomNav: React.FC<Props> = ({ activeTab, onTabChange }) => {
-  const tabs: { id: NavigationTab; label: string; icon: React.ReactNode }[] = [
+export const MaterialBottomNav: React.FC<Props> = ({ activeTab, onTabChange, unlockedStampsCount }) => {
+  const tabs: { id: NavigationTab; label: string; icon: React.ReactNode; badge?: string }[] = [
     {
       id: 'checkin',
       label: '定位打卡',
@@ -20,8 +21,14 @@ export const MaterialBottomNav: React.FC<Props> = ({ activeTab, onTabChange }) =
       icon: <Map className="w-4 h-4" />
     },
     {
+      id: 'stamps',
+      label: '百景集章',
+      icon: <Trophy className="w-4 h-4" />,
+      badge: unlockedStampsCount !== undefined ? `${unlockedStampsCount}` : undefined
+    },
+    {
       id: 'profile',
-      label: '關於我',
+      label: '個人中心',
       icon: <User className="w-4 h-4" />
     }
   ];
@@ -29,7 +36,7 @@ export const MaterialBottomNav: React.FC<Props> = ({ activeTab, onTabChange }) =
   return (
     <nav
       id="android-bottom-navigation"
-      className="h-16 border-t border-[#E7E0EC] flex items-center justify-around bg-[#F3EDF7] px-3 z-30 select-none shrink-0"
+      className="h-16 border-t border-[#E7E0EC] flex items-center justify-around bg-[#F3EDF7] px-2 z-30 select-none shrink-0"
     >
       {tabs.map(tab => {
         const isActive = activeTab === tab.id;
@@ -38,10 +45,10 @@ export const MaterialBottomNav: React.FC<Props> = ({ activeTab, onTabChange }) =
             key={tab.id}
             id={`nav-tab-${tab.id}`}
             onClick={() => onTabChange(tab.id)}
-            className="flex flex-col items-center justify-center flex-1 py-1 cursor-pointer transition-all duration-200"
+            className="flex flex-col items-center justify-center flex-1 py-1 cursor-pointer transition-all duration-200 relative"
           >
             <div
-              className={`w-14 h-7 rounded-full flex items-center justify-center transition-all duration-200 ${
+              className={`w-12 h-7 rounded-full flex items-center justify-center transition-all duration-200 relative ${
                 isActive
                   ? 'bg-[#EADDFF] text-[#6750A4] font-bold shadow-xs'
                   : 'text-[#49454F] hover:bg-[#EADDFF]/50 hover:text-[#1C1B1F]'

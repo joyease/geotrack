@@ -79,6 +79,13 @@ data class CheckInModel(
     val timestamp: Date? = null
 )
 
+data class UserStampRecord(
+    val attractionId: Int = 0,
+    val name: String = "",
+    val stampedAt: Date? = null,
+    val dateString: String = ""
+)
+
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -185,9 +192,52 @@ fun GeoTrackApp() {
             }
     }
 
+    // Stamp Rally State (雙北百景集章)
+    var userStamps by remember {
+        mutableStateOf<Map<Int, UserStampRecord>>(
+            mapOf(
+                1 to UserStampRecord(1, "台北101觀景台", dateString = "2026-08-23"),
+                2 to UserStampRecord(2, "象山六巨石", dateString = "2026-08-24"),
+                28 to UserStampRecord(28, "華山1914文創園區", dateString = "2026-08-25")
+            )
+        )
+    }
+    var isScanningStamps by remember { mutableStateOf(false) }
+    var stampFilterTab by remember { mutableStateOf("全部") }
+    var stampSearchQuery by remember { mutableStateOf("") }
+    var stampCelebrationTarget by remember { mutableStateOf<Attraction?>(null) }
+
+    fun loadUserStamps() {
+        val currentUserId = auth.currentUser?.uid ?: "usr_hermann_01"
+        firestore.collection("users").document(currentUserId).collection("stamps")
+            .get()
+            .addOnSuccessListener { snapshot ->
+                if (!snapshot.isEmpty) {
+                    val map = mutableMapOf<Int, UserStampRecord>()
+                    snapshot.documents.forEach { doc ->
+                        val id = doc.getLong("attractionId")?.toInt() ?: doc.id.toIntOrNull() ?: 0
+                        val name = doc.getString("name") ?: ""
+                        val ts = doc.getTimestamp("stampedAt")?.toDate()
+                        val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                        val dStr = if (ts != null) sdf.format(ts) else SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+                        if (id > 0) {
+                            map[id] = UserStampRecord(id, name, ts, dStr)
+                        }
+                    }
+                    if (map.isNotEmpty()) {
+                        userStamps = userStamps + map
+                    }
+                }
+            }
+            .addOnFailureListener {
+                Log.d("GeoTrackStamp", "Stamps offline fallback: ${it.message}")
+            }
+    }
+
     LaunchedEffect(isLoggedIn) {
         if (isLoggedIn) {
             loadRecentCheckIns()
+            loadUserStamps()
         }
     }
 
@@ -265,6 +315,112 @@ fun GeoTrackApp() {
                 isSubmitting = false
                 Toast.makeText(context, "打卡寫入失敗: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
             }
+    }
+
+    fun scanAndStampAttraction(manualTarget: Attraction? = null) {
+        if (manualTarget != null) {
+            val targetAtt = manualTarget
+            if (userStamps.containsKey(targetAtt.id)) {
+                val existing = userStamps[targetAtt.id]
+                Toast.makeText(context, "您在 ${existing?.dateString} 已經蓋過【${targetAtt.name}】的章囉！", Toast.LENGTH_SHORT).show()
+                return
+            }
+            val currentUserId = auth.currentUser?.uid ?: "usr_hermann_01"
+            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+            val dateStr = sdf.format(Date())
+            val newRecord = UserStampRecord(targetAtt.id, targetAtt.name, Date(), dateStr)
+
+            val stampData = hashMapOf(
+                "attractionId" to targetAtt.id,
+                "name" to targetAtt.name,
+                "stampedAt" to FieldValue.serverTimestamp()
+            )
+            firestore.collection("users").document(currentUserId).collection("stamps")
+                .document(targetAtt.id.toString())
+                .set(stampData)
+                .addOnSuccessListener {
+                    userStamps = userStamps + (targetAtt.id to newRecord)
+                    stampCelebrationTarget = targetAtt
+                    Toast.makeText(context, "🎉 恭喜成功蓋章：${targetAtt.name}！", Toast.LENGTH_SHORT).show()
+                }
+                .addOnFailureListener {
+                    userStamps = userStamps + (targetAtt.id to newRecord)
+                    stampCelebrationTarget = targetAtt
+                    Toast.makeText(context, "🎉 恭喜成功蓋章：${targetAtt.name}！", Toast.LENGTH_SHORT).show()
+                }
+            return
+        }
+
+        if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            locationPermissionLauncher.launch(
+                arrayOf(Manifest.permission.ACCESS_FINE_LOCATION, Manifest.permission.ACCESS_COARSE_LOCATION)
+            )
+            return
+        }
+
+        isScanningStamps = true
+        val cts = CancellationTokenSource()
+        try {
+            fusedLocationClient.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cts.token)
+                .addOnSuccessListener { loc: Location? ->
+                    isScanningStamps = false
+                    val userLat = loc?.latitude ?: currentLatitude
+                    val userLng = loc?.longitude ?: currentLongitude
+
+                    val distances = northTaiwan100AttractionsSpaced.map { att ->
+                        val result = FloatArray(1)
+                        Location.distanceBetween(userLat, userLng, att.lat, att.lng, result)
+                        Pair(att, result[0])
+                    }
+
+                    val within200m = distances.filter { it.second <= 200f }
+                    if (within200m.isNotEmpty()) {
+                        val closest = within200m.minByOrNull { it.second }!!.first
+                        if (userStamps.containsKey(closest.id)) {
+                            val existing = userStamps[closest.id]
+                            Toast.makeText(context, "您在 ${existing?.dateString} 已經蓋過【${closest.name}】的章囉！", Toast.LENGTH_SHORT).show()
+                        } else {
+                            val currentUserId = auth.currentUser?.uid ?: "usr_hermann_01"
+                            val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
+                            val dateStr = sdf.format(Date())
+                            val newRecord = UserStampRecord(closest.id, closest.name, Date(), dateStr)
+
+                            val stampData = hashMapOf(
+                                "attractionId" to closest.id,
+                                "name" to closest.name,
+                                "stampedAt" to FieldValue.serverTimestamp()
+                            )
+                            firestore.collection("users").document(currentUserId).collection("stamps")
+                                .document(closest.id.toString())
+                                .set(stampData)
+                                .addOnSuccessListener {
+                                    userStamps = userStamps + (closest.id to newRecord)
+                                    stampCelebrationTarget = closest
+                                    Toast.makeText(context, "🎉 恭喜成功蓋章：${closest.name}！", Toast.LENGTH_SHORT).show()
+                                }
+                                .addOnFailureListener {
+                                    userStamps = userStamps + (closest.id to newRecord)
+                                    stampCelebrationTarget = closest
+                                    Toast.makeText(context, "🎉 恭喜成功蓋章：${closest.name}！", Toast.LENGTH_SHORT).show()
+                                }
+                        }
+                    } else {
+                        val closestOverall = distances.minByOrNull { it.second }!!
+                        val distFormatted = if (closestOverall.second >= 1000f) {
+                            String.format(Locale.US, "%.1f 公里", closestOverall.second / 1000f)
+                        } else {
+                            "${closestOverall.second.toInt()} 公尺"
+                        }
+                        Toast.makeText(context, "目前不在景點 200m 範圍內！距離最近的【${closestOverall.first.name}】還有 $distFormatted", Toast.LENGTH_LONG).show()
+                    }
+                }
+                .addOnFailureListener {
+                    isScanningStamps = false
+                    Toast.makeText(context, "GPS 掃描失敗: ${it.localizedMessage}", Toast.LENGTH_SHORT).show()
+                }
+        } catch (e: SecurityException) {
+            isScanningStamps = false
+        }
     }
 
     fun searchFirestoreRecords() {
@@ -663,8 +819,14 @@ fun GeoTrackApp() {
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Person, contentDescription = "關於我") },
-                    label = { Text("關於我") }
+                    icon = { Icon(Icons.Default.Star, contentDescription = "百景集章") },
+                    label = { Text("百景集章") }
+                )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = { selectedTab = 3 },
+                    icon = { Icon(Icons.Default.Person, contentDescription = "個人中心") },
+                    label = { Text("個人中心") }
                 )
             }
         }
@@ -1256,7 +1418,458 @@ fun GeoTrackApp() {
                     }
                 }
                 2 -> {
-                    // Screen: 關於我 (完全對應圖片 2：統計卡片、使用過的行程代碼、匯出、重設、登出)
+                    // Screen: 百景集章 (雙北百景集章 100 Attractions Stamp Rally)
+                    val totalCount = northTaiwan100AttractionsSpaced.size
+                    val unlockedCount = userStamps.size
+                    val ratePercentage = (unlockedCount.toFloat() / totalCount * 100)
+
+                    // 100 Attractions sorted by Latitude descending (緯度從大到小: 北端 -> 南端)
+                    val sortedByLat100 = remember {
+                        northTaiwan100AttractionsSpaced.sortedWith(
+                            compareByDescending<Attraction> { it.lat }.thenBy { it.lng }
+                        )
+                    }
+
+                    // Group into 20 rows of 5 stamps each
+                    val rowsOf5Stamps = remember(sortedByLat100) {
+                        sortedByLat100.chunked(5)
+                    }
+
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        // Dashboard Card
+                        item {
+                            Card(
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    // Header row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = Color(0xFF6750A4),
+                                                modifier = Modifier.size(36.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Icon(
+                                                        Icons.Default.Star,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFFFFD54F),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = "雙北百景集章",
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 16.sp,
+                                                    color = Color(0xFF1D1B20)
+                                                )
+                                                Text(
+                                                    text = userEmail,
+                                                    fontSize = 11.sp,
+                                                    color = Color(0xFF79747E)
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    // Metrics Banner with Stamp Action Button (覆蓋原本門檻位置)
+                                    Surface(
+                                        shape = RoundedCornerShape(14.dp),
+                                        color = Color(0xFFF7F2FA),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column {
+                                                Text(
+                                                    text = "已解鎖紀念印章",
+                                                    fontSize = 10.sp,
+                                                    color = Color(0xFF79747E),
+                                                    fontWeight = FontWeight.Medium
+                                                )
+                                                Text(
+                                                    text = "$unlockedCount / $totalCount 點",
+                                                    fontSize = 16.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = Color(0xFF6750A4)
+                                                )
+                                            }
+
+                                            // Action Button
+                                            Button(
+                                                onClick = { scanAndStampAttraction() },
+                                                enabled = !isScanningStamps,
+                                                shape = RoundedCornerShape(10.dp),
+                                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                                            ) {
+                                                if (isScanningStamps) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(14.dp),
+                                                        color = Color.White,
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text("掃描中...", color = Color.White, fontSize = 11.sp)
+                                                } else {
+                                                    Icon(
+                                                        Icons.Default.LocationOn,
+                                                        contentDescription = null,
+                                                        tint = Color(0xFFFFD54F),
+                                                        modifier = Modifier.size(14.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        "現場 GPS 蓋章 (200m)",
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 11.sp,
+                                                        color = Color.White
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Linear Progress Indicator
+                                    LinearProgressIndicator(
+                                        progress = { (unlockedCount.toFloat() / totalCount).coerceIn(0.02f, 1f) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(6.dp)
+                                            .clip(RoundedCornerShape(3.dp)),
+                                        color = Color(0xFF6750A4),
+                                        trackColor = Color(0xFFE7E0EC)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Filter Chips & Search
+                        item {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    listOf("全部", "台北市", "新北市", "基隆市", "已解鎖").forEach { tabName ->
+                                        val isSel = stampFilterTab == tabName
+                                        val count = when (tabName) {
+                                            "全部" -> totalCount
+                                            "台北市" -> 50
+                                            "新北市" -> 40
+                                            "基隆市" -> 10
+                                            "已解鎖" -> unlockedCount
+                                            else -> 0
+                                        }
+                                        Surface(
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (isSel) Color(0xFF6750A4) else Color.White,
+                                            border = BorderStroke(1.dp, if (isSel) Color(0xFF6750A4) else Color(0xFFCAC4D0)),
+                                            modifier = Modifier.clickable { stampFilterTab = tabName }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = tabName,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSel) Color.White else Color(0xFF49454F)
+                                                )
+                                                Spacer(modifier = Modifier.width(3.dp))
+                                                Surface(
+                                                    shape = CircleShape,
+                                                    color = if (isSel) Color.White.copy(alpha = 0.25f) else Color(0xFFF3EDF7)
+                                                ) {
+                                                    Text(
+                                                        text = "$count",
+                                                        fontSize = 9.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isSel) Color.White else Color(0xFF6750A4),
+                                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Search text field
+                                OutlinedTextField(
+                                    value = stampSearchQuery,
+                                    onValueChange = { stampSearchQuery = it },
+                                    placeholder = { Text("搜尋景點名稱、行政區 (例: 101, 九份)...", fontSize = 12.sp) },
+                                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = Color(0xFF79747E), modifier = Modifier.size(16.dp)) },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = OutlinedTextFieldDefaults.colors(
+                                        focusedContainerColor = Color.White,
+                                        unfocusedContainerColor = Color.White,
+                                        focusedBorderColor = Color(0xFF6750A4),
+                                        unfocusedBorderColor = Color(0xFFCAC4D0)
+                                    ),
+                                    singleLine = true
+                                )
+                            }
+                        }
+
+                        // Section Header: 簡約單行 "根據緯度大小排列"
+                        item {
+                            Text(
+                                text = "根據緯度大小排列",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color(0xFF79747E),
+                                modifier = Modifier.padding(horizontal = 2.dp)
+                            )
+                        }
+
+                        // 20 Rows (Each row has 5 stamps from Left to Right, no row header labels)
+                        items(rowsOf5Stamps.size) { rowIndex ->
+                            val rowStamps = rowsOf5Stamps[rowIndex]
+
+                            // Check if any stamp in this row matches filter/search
+                            val anyMatches = rowStamps.any { att ->
+                                val matchFilter = when (stampFilterTab) {
+                                    "已解鎖" -> userStamps.containsKey(att.id)
+                                    "台北市" -> att.city == "台北市"
+                                    "新北市" -> att.city == "新北市"
+                                    "基隆市" -> att.city == "基隆市"
+                                    else -> true
+                                }
+                                val matchSearch = if (stampSearchQuery.isNotBlank()) {
+                                    val q = stampSearchQuery.trim().lowercase(Locale.ROOT)
+                                    att.name.lowercase(Locale.ROOT).contains(q) ||
+                                            att.city.lowercase(Locale.ROOT).contains(q) ||
+                                            att.district.lowercase(Locale.ROOT).contains(q)
+                                } else true
+                                matchFilter && matchSearch
+                            }
+
+                            Card(
+                                shape = RoundedCornerShape(14.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = if (anyMatches) Color.White else Color.White.copy(alpha = 0.5f)
+                                ),
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (anyMatches) Color(0xFFE7E0EC) else Color(0xFFE7E0EC).copy(alpha = 0.4f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(modifier = Modifier.padding(6.dp)) {
+                                    // 5 Stamp Columns in this Row
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    ) {
+                                        rowStamps.forEachIndexed { colIndex, att ->
+                                            val globalRank = rowIndex * 5 + colIndex + 1
+                                            val isUnlocked = userStamps.containsKey(att.id)
+                                            val stampRec = userStamps[att.id]
+
+                                            val distArr = FloatArray(1)
+                                            Location.distanceBetween(currentLatitude, currentLongitude, att.lat, att.lng, distArr)
+                                            val distMeters = distArr[0]
+                                            val isWithin200 = distMeters <= 200f
+
+                                            val matches = run {
+                                                val matchFilter = when (stampFilterTab) {
+                                                    "已解鎖" -> isUnlocked
+                                                    "台北市" -> att.city == "台北市"
+                                                    "新北市" -> att.city == "新北市"
+                                                    "基隆市" -> att.city == "基隆市"
+                                                    else -> true
+                                                }
+                                                val matchSearch = if (stampSearchQuery.isNotBlank()) {
+                                                    val q = stampSearchQuery.trim().lowercase(Locale.ROOT)
+                                                    att.name.lowercase(Locale.ROOT).contains(q) ||
+                                                            att.city.lowercase(Locale.ROOT).contains(q) ||
+                                                            att.district.lowercase(Locale.ROOT).contains(q)
+                                                } else true
+                                                matchFilter && matchSearch
+                                            }
+
+                                            Surface(
+                                                shape = RoundedCornerShape(10.dp),
+                                                color = if (!matches) Color(0xFFF7F2FA).copy(alpha = 0.3f)
+                                                else if (isUnlocked) Color(0xFFFFF8F8)
+                                                else if (isWithin200) Color(0xFFF1F8E9)
+                                                else Color(0xFFFAFAFA),
+                                                border = BorderStroke(
+                                                    1.dp,
+                                                    if (!matches) Color.Transparent
+                                                    else if (isUnlocked) Color(0xFFB3261E).copy(alpha = 0.4f)
+                                                    else if (isWithin200) Color(0xFF2E7D32)
+                                                    else Color(0xFFE7E0EC)
+                                                ),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .clickable {
+                                                        scanAndStampAttraction(att)
+                                                    }
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.padding(horizontal = 2.dp, vertical = 4.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    // Top Rank & District
+                                                    Row(
+                                                        modifier = Modifier.fillMaxWidth(),
+                                                        horizontalArrangement = Arrangement.SpaceBetween
+                                                    ) {
+                                                        Text(
+                                                            text = "#$globalRank",
+                                                            fontSize = 7.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color(0xFF6750A4)
+                                                        )
+                                                        Text(
+                                                            text = when (att.city) {
+                                                                "台北市" -> "北市"
+                                                                "新北市" -> "新北"
+                                                                else -> "基隆"
+                                                            },
+                                                            fontSize = 7.sp,
+                                                            color = Color(0xFF79747E)
+                                                        )
+                                                    }
+
+                                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                                    // Stamp Badge
+                                                    if (isUnlocked) {
+                                                        Surface(
+                                                            shape = CircleShape,
+                                                            color = Color(0xFFFFF5F5),
+                                                            border = BorderStroke(1.5.dp, Color(0xFFB3261E)),
+                                                            modifier = Modifier.size(38.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .padding(1.dp)
+                                                                    .border(0.5.dp, Color(0xFFB3261E).copy(alpha = 0.6f), CircleShape),
+                                                                contentAlignment = Alignment.Center
+                                                            ) {
+                                                                Column(
+                                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                                    verticalArrangement = Arrangement.Center
+                                                                ) {
+                                                                    Text(
+                                                                        text = "雙北百景",
+                                                                        fontSize = 5.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = Color(0xFFB3261E),
+                                                                        letterSpacing = (-0.5).sp
+                                                                    )
+                                                                    Text(
+                                                                        text = if (att.name.length > 3) att.name.take(3) + "…" else att.name,
+                                                                        fontSize = 6.sp,
+                                                                        fontWeight = FontWeight.Black,
+                                                                        color = Color(0xFFB3261E),
+                                                                        maxLines = 1
+                                                                    )
+                                                                    Text(
+                                                                        text = "★${stampRec?.dateString?.takeLast(5) ?: "08-25"}★",
+                                                                        fontSize = 4.5.sp,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = Color(0xFFB3261E)
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    } else {
+                                                        Surface(
+                                                            shape = CircleShape,
+                                                            color = if (isWithin200) Color(0xFFE8F5E9) else Color(0xFFF3EDF7),
+                                                            border = BorderStroke(
+                                                                1.dp,
+                                                                if (isWithin200) Color(0xFF2E7D32) else Color(0xFFCAC4D0)
+                                                            ),
+                                                            modifier = Modifier.size(38.dp)
+                                                        ) {
+                                                            Column(
+                                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                                verticalArrangement = Arrangement.Center
+                                                            ) {
+                                                                if (isWithin200) {
+                                                                    Icon(
+                                                                        Icons.Default.Star,
+                                                                        contentDescription = null,
+                                                                        tint = Color(0xFF2E7D32),
+                                                                        modifier = Modifier.size(12.dp)
+                                                                    )
+                                                                    Text(
+                                                                        text = "可蓋章",
+                                                                        fontSize = 6.sp,
+                                                                        color = Color(0xFF2E7D32),
+                                                                        fontWeight = FontWeight.Bold
+                                                                    )
+                                                                } else {
+                                                                    Icon(
+                                                                        Icons.Default.Lock,
+                                                                        contentDescription = null,
+                                                                        tint = Color(0xFF79747E),
+                                                                        modifier = Modifier.size(10.dp)
+                                                                    )
+                                                                    Text(
+                                                                        text = String.format(Locale.US, "%.2f°", att.lat),
+                                                                        fontSize = 5.5.sp,
+                                                                        color = Color(0xFF79747E),
+                                                                        fontWeight = FontWeight.Medium
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
+                                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                                    // Attraction name snippet
+                                                    Text(
+                                                        text = att.name,
+                                                        fontSize = 7.5.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = Color(0xFF1D1B20),
+                                                        maxLines = 1,
+                                                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                3 -> {
+                    // Screen: 個人中心 (統計卡片、雙北百景集章進度、使用過的行程代碼、匯出、重設、登出)
                     val uniqueTrips = remember(allUserCheckIns) {
                         allUserCheckIns.map { it.tripCode }.filter { it.isNotBlank() }.distinct()
                     }
@@ -1270,7 +1883,7 @@ fun GeoTrackApp() {
                     ) {
                         item {
                             Text(
-                                text = "關於我",
+                                text = "個人中心",
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF1D1B20)
@@ -1329,13 +1942,12 @@ fun GeoTrackApp() {
                             }
                         }
 
-                        // 統計指標卡片：2 獨立行程數 / 4 打卡總次數 (圖片 2 第一區塊)
+                        // 統計指標卡片：獨立行程數 / 打卡總次數
                         item {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                             ) {
-                                // 卡片 1: 獨立行程數
                                 Card(
                                     shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1362,7 +1974,6 @@ fun GeoTrackApp() {
                                     }
                                 }
 
-                                // 卡片 2: 打卡總次數
                                 Card(
                                     shape = RoundedCornerShape(16.dp),
                                     colors = CardDefaults.cardColors(containerColor = Color.White),
@@ -1385,6 +1996,81 @@ fun GeoTrackApp() {
                                             fontSize = 12.sp,
                                             fontWeight = FontWeight.Medium,
                                             color = Color(0xFF49454F)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // 雙北百景集章進度卡片
+                        item {
+                            Card(
+                                shape = RoundedCornerShape(16.dp),
+                                colors = CardDefaults.cardColors(containerColor = Color.White),
+                                border = BorderStroke(1.dp, Color(0xFFB3261E).copy(alpha = 0.3f)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Surface(
+                                                shape = CircleShape,
+                                                color = Color(0xFFB3261E),
+                                                modifier = Modifier.size(24.dp)
+                                            ) {
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(text = "★", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                                }
+                                            }
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "雙北百景集章進度",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 13.sp,
+                                                color = Color(0xFF1D1B20)
+                                            )
+                                        }
+                                        Text(
+                                            text = "${userStamps.size} / 100 點",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.sp,
+                                            color = Color(0xFFB3261E)
+                                        )
+                                    }
+
+                                    LinearProgressIndicator(
+                                        progress = { (userStamps.size.toFloat() / 100f).coerceIn(0.02f, 1f) },
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(8.dp)
+                                            .clip(RoundedCornerShape(4.dp)),
+                                        color = Color(0xFFB3261E),
+                                        trackColor = Color(0xFFE7E0EC)
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = String.format(Locale.US, "達成率: %.1f%%", (userStamps.size.toFloat() / 100f * 100)),
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF49454F)
+                                        )
+                                        Text(
+                                            text = "前往集章 →",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF6750A4),
+                                            modifier = Modifier.clickable { selectedTab = 2 }
                                         )
                                     }
                                 }
@@ -1575,6 +2261,91 @@ fun GeoTrackApp() {
                         }
                     }
                 }
+            }
+
+            // Stamp Unlocked Celebration Dialog
+            stampCelebrationTarget?.let { target ->
+                AlertDialog(
+                    onDismissRequest = { stampCelebrationTarget = null },
+                    icon = {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFFFFF5F5),
+                            border = BorderStroke(2.dp, Color(0xFFB3261E)),
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .padding(3.dp)
+                                    .border(1.dp, Color(0xFFB3261E).copy(alpha = 0.6f), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.Center
+                                ) {
+                                    Text("雙北百景", fontSize = 8.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB3261E))
+                                    Text(
+                                        text = if (target.name.length > 5) target.name.take(4) + "…" else target.name,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = Color(0xFFB3261E),
+                                        maxLines = 1
+                                    )
+                                    Text("★ 紀念印章 ★", fontSize = 7.sp, fontWeight = FontWeight.Bold, color = Color(0xFFB3261E))
+                                }
+                            }
+                        }
+                    },
+                    title = {
+                        Text(
+                            text = "🎉 成功蓋章！",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp,
+                            color = Color(0xFF1D1B20),
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    },
+                    text = {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "【#${String.format(Locale.US, "%03d", target.id)} ${target.name}】",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = Color(0xFF6750A4)
+                            )
+                            Text(
+                                text = "${target.city} · ${target.district}",
+                                fontSize = 12.sp,
+                                color = Color(0xFF49454F)
+                            )
+                            Text(
+                                text = "已成功寫入 Firestore 雲端資料庫！目前總進度：${userStamps.size} / 100 點",
+                                fontSize = 12.sp,
+                                color = Color(0xFF2E7D32),
+                                fontWeight = FontWeight.Medium,
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = { stampCelebrationTarget = null },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
+                        ) {
+                            Text("太棒了！繼續集章", fontWeight = FontWeight.Bold, color = Color.White)
+                        }
+                    },
+                    shape = RoundedCornerShape(16.dp),
+                    containerColor = Color.White
+                )
             }
         }
     }
