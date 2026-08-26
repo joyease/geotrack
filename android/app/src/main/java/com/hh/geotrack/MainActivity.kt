@@ -1008,6 +1008,7 @@ fun GeoTrackApp() {
                         }
 
                         // Map Viewport (Takes all remaining screen height)
+                        // 地圖視圖區域（已修正高度 100%、CSP 放行、CartoDB 免 Key 圖資、多重延遲重繪）
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -1020,36 +1021,33 @@ fun GeoTrackApp() {
 
                             val markersJs = searchResults.mapIndexedNotNull { idx, r ->
                                 r.location?.let { loc ->
-                                    val tStr = r.timestamp?.let { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(it) } ?: ""
-                                    val safeTrip = r.tripCode.replace("'", "\\'")
-                                    val safeEmail = r.userEmail.replace("'", "\\'")
-                                    val isFirst = idx == 0
-                                    val isLast = idx == searchResults.size - 1 && searchResults.size > 1
-                                    val pinBg = if (isLast) "#B3261E" else if (isFirst) "#059669" else "#6750A4"
-                                    val pinRing = if (isLast) "#F9DEDC" else if (isFirst) "#D1FAE5" else "#EADDFF"
+                                    val title = r.locationName ?: "打卡點 #${idx + 1}"
+                                    val time = r.checkInTime ?: ""
+                                    val user = r.userEmail ?: ""
+                                    val trip = r.tripCode ?: ""
+                                    val color = if (idx == 0) "#10B981" else if (idx == searchResults.size - 1) "#EF4444" else "#6366F1"
                                     """
                                     (function() {
                                         var customIcon = L.divIcon({
-                                            className: 'custom-pin',
-                                            html: '<div style="transform:translate(-50%, -100%); display:flex; flex-direction:column; align-items:center;">' +
-                                                  '<div style="background-color:${pinBg}; color:#fff; width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-weight:bold; font-size:12px; border:2.5px solid ${pinRing}; box-shadow:0 3px 8px rgba(0,0,0,0.35); font-family:sans-serif;">${idx + 1}</div>' +
-                                                  '<div style="width:0; height:0; border-left:6px solid transparent; border-right:6px solid transparent; border-top:7px solid ${pinBg}; margin-top:-1px;"></div>' +
-                                                  '</div>',
-                                            iconSize: [30, 36],
-                                            iconAnchor: [15, 36],
-                                            popupAnchor: [0, -36]
+                                            className: 'custom-div-icon',
+                                            html: "<div style='background-color:$color;width:24px;height:24px;border-radius:50%;border:2px solid white;box-shadow:0 2px 4px rgba(0,0,0,0.3);display:flex;align-items:center;justify-content:center;color:white;font-size:10px;font-weight:bold;'>${idx + 1}</div>",
+                                            iconSize: [24, 24],
+                                            iconAnchor: [12, 12]
                                         });
                                         var m = L.marker([${loc.latitude}, ${loc.longitude}], {icon: customIcon}).addTo(map);
-                                        m.bindPopup('<div style="text-align:center; font-family:sans-serif; font-size:12px; line-height:1.4;"><b>$safeTrip</b><br/><span style="color:#49454F;">$safeEmail</span><br/><span style="color:#6750A4; font-size:11px; font-weight:bold;">$tStr</span></div>');
-                                        ${if (idx == 0 || idx == searchResults.size - 1) "m.openPopup();" else ""}
+                                        m.bindPopup("<b>$title</b><br/><span style='font-size:11px;color:#666;'>$user<br/>$time<br/>行程: $trip</span>");
                                     })();
                                     """.trimIndent()
                                 }
                             }.joinToString("\n")
 
-                            val polylineCoords = validCoords.joinToString(",") { "[${it.latitude}, ${it.longitude}]" }
-                            val polylineJs = if (validCoords.size > 1) {
-                                "var polyline = L.polyline([$polylineCoords], {color: '#6750A4', weight: 4, opacity: 0.85, dashArray: '6,6'}).addTo(map); try { map.fitBounds(polyline.getBounds().pad(0.25)); } catch(e){}"
+                            val polylineJs = if (validCoords.size >= 2) {
+                                val latLngs = validCoords.joinToString(",") { "[${it.latitude}, ${it.longitude}]" }
+                                """
+                                var latlngs = [$latLngs];
+                                var polyline = L.polyline(latlngs, {color: '#6366F1', weight: 4, opacity: 0.8, dashArray: '6, 8'}).addTo(map);
+                                map.fitBounds(polyline.getBounds(), {padding: [30, 30]});
+                                """.trimIndent()
                             } else if (validCoords.size == 1) {
                                 "map.setView([${validCoords[0].latitude}, ${validCoords[0].longitude}], 15);"
                             } else {
@@ -1110,13 +1108,12 @@ fun GeoTrackApp() {
                                                 }).setView([$centerLat, $centerLng], 13);
 
                                                 window.currentMap = map;
-
                                                 setTileLayer('$currentTileType');
 
                                                 $markersJs
                                                 $polylineJs
 
-                                                // 強制在多個時間點重刷尺寸，徹底解決 Android 渲染延遲
+                                                // 多重延遲觸發 invalidateSize 確保瓦片正常載入
                                                 setTimeout(function() { if (map) map.invalidateSize(); }, 150);
                                                 setTimeout(function() { if (map) map.invalidateSize(); }, 400);
                                                 setTimeout(function() { if (map) map.invalidateSize(); }, 800);
@@ -1130,81 +1127,46 @@ fun GeoTrackApp() {
                                 </html>
                             """.trimIndent()
 
-                            // Fully interactive WebView
                             AndroidView(
                                 modifier = Modifier.fillMaxSize(),
                                 factory = { ctx ->
                                     WebView(ctx).apply {
                                         webViewRef.value = this
-                                        setLayerType(View.LAYER_TYPE_HARDWARE, null)
-                                        isNestedScrollingEnabled = false
-                                        isVerticalScrollBarEnabled = false
-                                        isHorizontalScrollBarEnabled = false
-
-                                        // Allow map to intercept pan & zoom gestures smoothly
-                                        setOnTouchListener { v, event ->
-                                            when (event.action) {
-                                                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_MOVE -> {
-                                                    v.parent?.requestDisallowInterceptTouchEvent(true)
-                                                }
-                                                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                                    v.parent?.requestDisallowInterceptTouchEvent(false)
-                                                }
-                                            }
-                                            false
-                                        }
-
-                                        settings.apply {
-                                            javaScriptEnabled = true
-                                            domStorageEnabled = true
-                                            databaseEnabled = true
-                                            loadsImagesAutomatically = true
-                                            blockNetworkImage = false
-                                            blockNetworkLoads = false
-                                            useWideViewPort = true
-                                            loadWithOverviewMode = true
-                                            allowContentAccess = true
-                                            allowFileAccess = true
-                                            mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                                            cacheMode = WebSettings.LOAD_DEFAULT
-                                            builtInZoomControls = true
-                                            displayZoomControls = false
-                                            userAgentString = "Mozilla/5.0 (Linux; Android 14; Mobile) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Mobile Safari/537.36"
-                                        }
-
-                                        webViewClient = object : WebViewClient() {
-                                            override fun onReceivedError(view: WebView?, errorCode: Int, description: String?, failingUrl: String?) {
-                                                super.onReceivedError(view, errorCode, description, failingUrl)
-                                                Log.e("GeoTrackMap", "WebView Error: $errorCode, $description, $failingUrl")
-                                            }
-                                            override fun onReceivedSslError(view: WebView?, handler: SslErrorHandler?, error: SslError?) {
-                                                Log.w("GeoTrackMap", "SSL Error bypassed: $error")
-                                                handler?.proceed()
-                                            }
-                                        }
+                                        layoutParams = ViewGroup.LayoutParams(
+                                            ViewGroup.LayoutParams.MATCH_PARENT,
+                                            ViewGroup.LayoutParams.MATCH_PARENT
+                                        )
+                                        settings.javaScriptEnabled = true
+                                        settings.domStorageEnabled = true
+                                        settings.loadWithOverviewMode = true
+                                        settings.useWideViewPort = true
+                                        settings.builtInZoomControls = false
+                                        settings.displayZoomControls = false
+                                        settings.cacheMode = WebSettings.LOAD_NO_CACHE
+                                        settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
 
                                         webChromeClient = object : WebChromeClient() {
-                                            override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
-                                                consoleMessage?.let {
-                                                    Log.d("GeoTrackMapJS", "${it.messageLevel()}: ${it.message()}")
-                                                }
+                                            override fun onConsoleMessage(msg: ConsoleMessage?): Boolean {
+                                                Log.d("GeoTrackMapJS", "${msg?.message()} -- line ${msg?.lineNumber()}")
                                                 return true
                                             }
                                         }
-
-                                        tag = htmlContent.hashCode()
-                                        loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
+                                        webViewClient = object : WebViewClient() {
+                                            override fun onPageFinished(view: WebView?, url: String?) {
+                                                super.onPageFinished(view, url)
+                                                view?.postDelayed({
+                                                    view.evaluateJavascript("if (typeof map !== 'undefined' && map) { map.invalidateSize(); }", null)
+                                                }, 300)
+                                            }
+                                        }
+                                        loadDataWithBaseURL("https://localhost/", htmlContent, "text/html", "UTF-8", null)
                                     }
                                 },
                                 update = { webView ->
-                                    webViewRef.value = webView
-                                    val currentHash = htmlContent.hashCode()
-                                    if (webView.tag != currentHash) {
-                                        webView.tag = currentHash
-                                        webView.loadDataWithBaseURL("https://localhost", htmlContent, "text/html", "UTF-8", null)
-                                    }
+                                    webView.loadDataWithBaseURL("https://localhost/", htmlContent, "text/html", "UTF-8", null)
                                 }
                             )
+                        }
 
                             // Floating Map Controls (Top-Right)
                             Column(
