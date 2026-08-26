@@ -1,8 +1,23 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 預設拒絕所有未明訂規則
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 打卡紀錄：所有人可讀取查詢，但只有通過 Firebase 驗證的用戶才可寫入
     match /checkins/{checkinId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create: if request.auth != null;
+      allow update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || resource.data.userEmail == request.auth.token.email);
+    }
+
+    // 百景集章紀錄：用戶只能在自己的路徑寫入
+    match /users/{userId}/stamps/{stampId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
     }
   }
 }
+

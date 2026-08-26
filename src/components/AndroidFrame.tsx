@@ -20,7 +20,7 @@ export const AndroidFrame: React.FC<Props> = ({ children }) => {
           <div className="flex items-baseline gap-2">
             <span className="font-bold text-lg tracking-tight text-[#6750A4]">MySportsPal</span>
             <span className="hidden sm:inline text-xs text-[#79747E] font-medium">
-              GPS Track & Map
+              旅遊打卡 & 百景集章
             </span>
           </div>
         </div>

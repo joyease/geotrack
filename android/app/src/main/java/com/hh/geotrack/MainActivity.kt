@@ -132,12 +132,13 @@ fun GeoTrackApp() {
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     // Authentication State
-    var isLoggedIn by remember { mutableStateOf(true) }
-    var loginEmailInput by remember { mutableStateOf("test@gmail.com") }
+    var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
+    var loginEmailInput by remember { mutableStateOf(auth.currentUser?.email ?: "test@gmail.com") }
     var loginPasswordInput by remember { mutableStateOf("password123") }
+    var isAuthenticating by remember { mutableStateOf(false) }
 
     var selectedTab by remember { mutableIntStateOf(0) }
-    var userEmail by remember { mutableStateOf("test@gmail.com") }
+    var userEmail by remember { mutableStateOf(auth.currentUser?.email ?: "test@gmail.com") }
     var tripCode by remember { mutableStateOf("TAIPEI") }
     var currentLatitude by remember { mutableDoubleStateOf(25.033964) }
     var currentLongitude by remember { mutableDoubleStateOf(121.564468) }
@@ -287,15 +288,23 @@ fun GeoTrackApp() {
     }
 
     fun submitCheckIn() {
+        val currentAuth = auth.currentUser
+        if (currentAuth == null) {
+            Toast.makeText(context, "請先通過 Firebase 登入認證後再進行打卡！", Toast.LENGTH_LONG).show()
+            isLoggedIn = false
+            return
+        }
+
         if (tripCode.isBlank()) {
             Toast.makeText(context, "請輸入行程代碼", Toast.LENGTH_SHORT).show()
             return
         }
 
         isSubmitting = true
+        val activeEmail = currentAuth.email ?: userEmail.trim()
         val docData = hashMapOf(
-            "userId" to userEmail.substringBefore("@"),
-            "userEmail" to userEmail.trim(),
+            "userId" to (currentAuth.email?.substringBefore("@") ?: currentAuth.uid),
+            "userEmail" to activeEmail,
             "tripCode" to tripCode.trim().uppercase(Locale.ROOT),
             "location" to GeoPoint(currentLatitude, currentLongitude),
             "timestamp" to FieldValue.serverTimestamp(),
@@ -318,6 +327,14 @@ fun GeoTrackApp() {
     }
 
     fun scanAndStampAttraction(manualTarget: Attraction? = null) {
+        val currentAuth = auth.currentUser
+        if (currentAuth == null) {
+            Toast.makeText(context, "請先通過 Firebase 登入認證後再進行集章！", Toast.LENGTH_LONG).show()
+            isLoggedIn = false
+            return
+        }
+        val currentUserId = currentAuth.uid
+
         if (manualTarget != null) {
             val targetAtt = manualTarget
             if (userStamps.containsKey(targetAtt.id)) {
@@ -325,7 +342,6 @@ fun GeoTrackApp() {
                 Toast.makeText(context, "您在 ${existing?.dateString} 已經蓋過【${targetAtt.name}】的章囉！", Toast.LENGTH_SHORT).show()
                 return
             }
-            val currentUserId = auth.currentUser?.uid ?: "usr_test_01"
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val dateStr = sdf.format(Date())
             val newRecord = UserStampRecord(targetAtt.id, targetAtt.name, Date(), dateStr)
@@ -380,7 +396,6 @@ fun GeoTrackApp() {
                             val existing = userStamps[closest.id]
                             Toast.makeText(context, "您在 ${existing?.dateString} 已經蓋過【${closest.name}】的章囉！", Toast.LENGTH_SHORT).show()
                         } else {
-                            val currentUserId = auth.currentUser?.uid ?: "usr_test_01"
                             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                             val dateStr = sdf.format(Date())
                             val newRecord = UserStampRecord(closest.id, closest.name, Date(), dateStr)
@@ -615,8 +630,9 @@ fun GeoTrackApp() {
                 color = Color(0xFF6750A4)
             )
             Text(
-                text = "GPS Track & Map • 外勤打卡系統",
+                text = "旅遊打卡 & 百景集章",
                 fontSize = 13.sp,
+                fontWeight = FontWeight.Medium,
                 color = Color(0xFF49454F)
             )
 
@@ -635,7 +651,7 @@ fun GeoTrackApp() {
                     OutlinedTextField(
                         value = loginEmailInput,
                         onValueChange = { loginEmailInput = it },
-                        label = { Text("Email 帳號") },
+                        label = { Text("Firebase Email 帳號") },
                         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -645,7 +661,7 @@ fun GeoTrackApp() {
                     OutlinedTextField(
                         value = loginPasswordInput,
                         onValueChange = { loginPasswordInput = it },
-                        label = { Text("密碼") },
+                        label = { Text("Firebase 密碼 (至少6位)") },
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
@@ -654,62 +670,61 @@ fun GeoTrackApp() {
 
                     Button(
                         onClick = {
-                            if (loginEmailInput.isBlank()) {
-                                Toast.makeText(context, "請輸入 Email", Toast.LENGTH_SHORT).show()
+                            val cleanEmail = loginEmailInput.trim()
+                            val cleanPass = loginPasswordInput.trim()
+                            if (cleanEmail.isBlank() || cleanPass.isBlank()) {
+                                Toast.makeText(context, "請輸入完整的 Email 與密碼", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
-                            userEmail = loginEmailInput.trim()
-                            mapQueryEmail = loginEmailInput.trim()
-                            isLoggedIn = true
-                            Toast.makeText(context, "登入成功！歡迎使用 MySportsPal", Toast.LENGTH_SHORT).show()
+                            if (cleanPass.length < 6) {
+                                Toast.makeText(context, "密碼長度至少需 6 個字元", Toast.LENGTH_SHORT).show()
+                                return@Button
+                            }
+
+                            isAuthenticating = true
+                            auth.signInWithEmailAndPassword(cleanEmail, cleanPass)
+                                .addOnSuccessListener { result ->
+                                    isAuthenticating = false
+                                    val user = result.user
+                                    if (user != null) {
+                                        userEmail = user.email ?: cleanEmail
+                                        mapQueryEmail = userEmail
+                                        isLoggedIn = true
+                                        Toast.makeText(context, "✅ Firebase 認證成功！歡迎 ${user.email}", Toast.LENGTH_SHORT).show()
+                                        loadRecentCheckIns()
+                                    }
+                                }
+                                .addOnFailureListener { ex ->
+                                    isAuthenticating = false
+                                    Toast.makeText(context, "❌ Firebase 驗證失敗: ${ex.localizedMessage ?: "帳號或密碼錯誤"}", Toast.LENGTH_LONG).show()
+                                }
                         },
+                        enabled = !isAuthenticating,
                         modifier = Modifier.fillMaxWidth().height(48.dp),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF6750A4))
                     ) {
-                        Icon(Icons.Default.Login, contentDescription = null)
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("登入帳號 (Login)", fontWeight = FontWeight.Bold)
+                        if (isAuthenticating) {
+                            CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("驗證登入中...", fontWeight = FontWeight.Bold)
+                        } else {
+                            Icon(Icons.Default.Login, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("登入 MySportsPal (Firebase 認證)", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "快速測試帳號選擇：",
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF79747E)
+                text = "🔒 僅限管理者在 Firebase 後台開通設定之授權帳號登入使用。",
+                fontSize = 11.sp,
+                color = Color(0xFF79747E),
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
             )
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                val demoEmails = listOf("hermanntalk@gmail.com", "test@company.com", "supervisor@company.com")
-                demoEmails.forEach { dEmail ->
-                    Surface(
-                        shape = RoundedCornerShape(8.dp),
-                        color = Color(0xFFEADDFF),
-                        modifier = Modifier
-                            .weight(1f)
-                            .clickable {
-                                loginEmailInput = dEmail
-                                Toast.makeText(context, "已選取: $dEmail", Toast.LENGTH_SHORT).show()
-                            }
-                            .padding(vertical = 6.dp, horizontal = 4.dp)
-                    ) {
-                        Text(
-                            text = dEmail.substringBefore("@"),
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF21005D),
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                    }
-                }
-            }
         }
         return
     }
@@ -758,7 +773,7 @@ fun GeoTrackApp() {
                                 letterSpacing = (-0.5).sp
                             )
                             Text(
-                                text = "GPS Track & Map",
+                                text = "旅遊打卡 & 百景集章",
                                 fontSize = 11.sp,
                                 color = Color(0xFF79747E),
                                 fontWeight = FontWeight.Medium

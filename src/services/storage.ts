@@ -1,5 +1,5 @@
 import { CheckInRecord, AuthUser, GeoPoint, UserStamp } from '../types';
-import { db } from './firebase';
+import { db, auth } from './firebase';
 import { 
   collection, 
   doc,
@@ -12,6 +12,7 @@ import {
   GeoPoint as FirestoreGeoPoint,
   Timestamp
 } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
 
 const STORAGE_CHECKINS_KEY = 'geocheckin_firestore_checkins';
 const STORAGE_USER_KEY = 'geocheckin_firebase_auth_user';
@@ -23,19 +24,20 @@ const SEED_CHECKINS: CheckInRecord[] = [];
 export const StorageService = {
   // Authentication methods
   getCurrentUser(): AuthUser | null {
+    if (auth.currentUser) {
+      return {
+        uid: auth.currentUser.uid,
+        email: auth.currentUser.email || '',
+        displayName: auth.currentUser.displayName || auth.currentUser.email?.split('@')[0] || 'User'
+      };
+    }
     try {
       const stored = localStorage.getItem(STORAGE_USER_KEY);
       if (stored) return JSON.parse(stored);
     } catch {
       // ignore
     }
-    const defaultUser: AuthUser = {
-      uid: 'usr_test_01',
-      email: 'test@gmail.com',
-      displayName: 'Test User'
-    };
-    this.setCurrentUser(defaultUser);
-    return defaultUser;
+    return null;
   },
 
   setCurrentUser(user: AuthUser | null): void {
@@ -44,6 +46,15 @@ export const StorageService = {
     } else {
       localStorage.removeItem(STORAGE_USER_KEY);
     }
+  },
+
+  async logout(): Promise<void> {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.warn('Firebase signOut error:', e);
+    }
+    this.setCurrentUser(null);
   },
 
   // Firestore Check-ins CRUD
@@ -107,16 +118,19 @@ export const StorageService = {
 
     // 2. Write to live Cloud Firestore (collection: checkins)
     try {
+      const currentAuth = auth.currentUser;
+      const effectiveUserId = currentAuth?.uid || record.userId;
+      const effectiveUserEmail = currentAuth?.email || record.userEmail;
       const checkinsRef = collection(db, 'checkins');
       await addDoc(checkinsRef, {
-        userId: record.userId,
-        userEmail: record.userEmail,
+        userId: effectiveUserId,
+        userEmail: effectiveUserEmail,
         tripCode: record.tripCode.trim(),
         location: new FirestoreGeoPoint(record.location.latitude, record.location.longitude),
         timestamp: serverTimestamp(),
         accuracy: record.accuracy || 4.5,
         addressHint: newRecord.addressHint,
-        deviceModel: 'Android (MySportsPal)'
+        deviceModel: 'Web Browser'
       });
       console.log('✅ Successfully persisted to Cloud Firestore collection [checkins]');
     } catch (err) {
@@ -228,13 +242,15 @@ export const StorageService = {
 
     // Persist to Cloud Firestore: users/{userId}/stamps/{attractionId}
     try {
-      const stampDocRef = doc(db, 'users', userId, 'stamps', stamp.attractionId.toString());
+      const currentAuth = auth.currentUser;
+      const targetUserId = currentAuth?.uid || userId;
+      const stampDocRef = doc(db, 'users', targetUserId, 'stamps', stamp.attractionId.toString());
       await setDoc(stampDocRef, {
         attractionId: stamp.attractionId,
         name: stamp.name,
         stampedAt: serverTimestamp()
       }, { merge: true });
-      console.log(`✅ Stamp saved to Firestore: users/${userId}/stamps/${stamp.attractionId}`);
+      console.log(`✅ Stamp saved to Firestore: users/${targetUserId}/stamps/${stamp.attractionId}`);
     } catch (err) {
       console.warn('Firestore stamp save fallback:', err);
     }

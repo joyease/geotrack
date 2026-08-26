@@ -56,8 +56,6 @@ export const ProfileScreen: React.FC<Props> = ({
   }, [currentUser.uid]);
 
   const handleLogoutClick = () => {
-    StorageService.setCurrentUser(null);
-    showToast('Logged out successfully', 'info');
     onLogout();
   };
 

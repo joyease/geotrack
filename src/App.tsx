@@ -6,6 +6,8 @@
 import React, { useState, useEffect } from 'react';
 import { AuthUser, NavigationTab, ToastMessage, UserStamp } from './types';
 import { StorageService } from './services/storage';
+import { auth } from './services/firebase';
+import { onAuthStateChanged } from 'firebase/auth';
 import { AndroidFrame } from './components/AndroidFrame';
 import { MaterialBottomNav } from './components/MaterialBottomNav';
 import { MaterialToastContainer } from './components/MaterialToast';
@@ -26,6 +28,25 @@ export default function App() {
   // Deep-link state for supervisor map query
   const [mapPrefillEmail, setMapPrefillEmail] = useState('');
   const [mapPrefillTripCode, setMapPrefillTripCode] = useState('');
+
+  // Sync with Firebase Auth state
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+      if (fbUser) {
+        const userObj: AuthUser = {
+          uid: fbUser.uid,
+          email: fbUser.email || '',
+          displayName: fbUser.displayName || fbUser.email?.split('@')[0] || 'User'
+        };
+        StorageService.setCurrentUser(userObj);
+        setCurrentUser(userObj);
+      } else {
+        StorageService.setCurrentUser(null);
+        setCurrentUser(null);
+      }
+    });
+    return () => unsubscribe();
+  }, []);
 
   // Load user stamps
   useEffect(() => {
@@ -58,9 +79,12 @@ export default function App() {
     setActiveTab('checkin');
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    await StorageService.logout();
     setCurrentUser(null);
+    showToast('已安全登出 Firebase 帳號', 'info');
   };
+
 
   const handleNavigateToMapWithTrip = (email: string, tripCode: string) => {
     setMapPrefillEmail(email);

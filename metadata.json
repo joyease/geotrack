@@ -1,6 +1,6 @@
 {
   "name": "GeoCheckin Supervisor",
-  "description": "Location-based check-ins and supervisor monitoring app with Jetpack Compose Material 3 UI, Firebase Firestore integration, and Leaflet map visualization.",
+  "description": "MySportsPal - 旅遊打卡 & 百景集章，結合 GPS 現場定位核銷與雙北景點集章探索。",
   "requestFramePermissions": ["geolocation"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }
