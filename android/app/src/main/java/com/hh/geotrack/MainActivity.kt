@@ -1074,7 +1074,7 @@ fun GeoTrackApp() {
                                         var map = null;
                                         var currentLayer = null;
                                         var tileUrls = {
-                                            clean: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+                                            clean: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
                                             osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                                             sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
                                         };

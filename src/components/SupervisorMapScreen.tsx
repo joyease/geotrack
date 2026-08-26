@@ -59,7 +59,7 @@ export const SupervisorMapScreen: React.FC<Props> = ({
 
     const tileUrls = {
       osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      clean: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+      clean: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
       satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
     };
 
@@ -77,10 +77,23 @@ export const SupervisorMapScreen: React.FC<Props> = ({
     polylineLayerRef.current = polylineGroup;
     mapInstanceRef.current = map;
 
+    // Force invalidateSize after mount
+    setTimeout(() => { map.invalidateSize(); }, 150);
+    setTimeout(() => { map.invalidateSize(); }, 400);
+    setTimeout(() => { map.invalidateSize(); }, 1000);
+
+    const resizeObserver = new ResizeObserver(() => {
+      map.invalidateSize();
+    });
+    if (mapContainerRef.current) {
+      resizeObserver.observe(mapContainerRef.current);
+    }
+
     // Initial search load
     handleSearch(searchEmail, searchTripCode, false);
 
     return () => {
+      resizeObserver.disconnect();
       map.remove();
       mapInstanceRef.current = null;
     };
@@ -101,7 +114,7 @@ export const SupervisorMapScreen: React.FC<Props> = ({
         attr: '&copy; OpenStreetMap'
       },
       clean: {
-        url: 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png',
+        url: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
         attr: '&copy; CARTO Voyager'
       },
       satellite: {
@@ -117,6 +130,7 @@ export const SupervisorMapScreen: React.FC<Props> = ({
     }).addTo(map);
 
     currentTileLayerRef.current = newLayer;
+    setTimeout(() => { map.invalidateSize(); }, 100);
   }, [tileLayerType]);
 
   // Create custom Sleek Interface styled Leaflet marker icon
