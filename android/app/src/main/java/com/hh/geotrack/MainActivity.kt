@@ -133,11 +133,11 @@ fun GeoTrackApp() {
 
     // Authentication State
     var isLoggedIn by remember { mutableStateOf(true) }
-    var loginEmailInput by remember { mutableStateOf("hermanntalk@gmail.com") }
+    var loginEmailInput by remember { mutableStateOf("test@gmail.com") }
     var loginPasswordInput by remember { mutableStateOf("password123") }
 
     var selectedTab by remember { mutableIntStateOf(0) }
-    var userEmail by remember { mutableStateOf("hermanntalk@gmail.com") }
+    var userEmail by remember { mutableStateOf("test@gmail.com") }
     var tripCode by remember { mutableStateOf("TAIPEI") }
     var currentLatitude by remember { mutableDoubleStateOf(25.033964) }
     var currentLongitude by remember { mutableDoubleStateOf(121.564468) }
@@ -148,7 +148,7 @@ fun GeoTrackApp() {
     var recentCheckIns by remember { mutableStateOf<List<CheckInModel>>(emptyList()) }
 
     // Query state for Map screen
-    var mapQueryEmail by remember { mutableStateOf("hermanntalk@gmail.com") }
+    var mapQueryEmail by remember { mutableStateOf("test@gmail.com") }
     var mapQueryTrip by remember { mutableStateOf("TAIPEI") }
     var searchResults by remember { mutableStateOf<List<CheckInModel>>(emptyList()) }
     var searchErrorMessage by remember { mutableStateOf<String?>(null) }
@@ -208,7 +208,7 @@ fun GeoTrackApp() {
     var stampCelebrationTarget by remember { mutableStateOf<Attraction?>(null) }
 
     fun loadUserStamps() {
-        val currentUserId = auth.currentUser?.uid ?: "usr_hermann_01"
+        val currentUserId = auth.currentUser?.uid ?: "usr_test_01"
         firestore.collection("users").document(currentUserId).collection("stamps")
             .get()
             .addOnSuccessListener { snapshot ->
@@ -325,7 +325,7 @@ fun GeoTrackApp() {
                 Toast.makeText(context, "您在 ${existing?.dateString} 已經蓋過【${targetAtt.name}】的章囉！", Toast.LENGTH_SHORT).show()
                 return
             }
-            val currentUserId = auth.currentUser?.uid ?: "usr_hermann_01"
+            val currentUserId = auth.currentUser?.uid ?: "usr_test_01"
             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
             val dateStr = sdf.format(Date())
             val newRecord = UserStampRecord(targetAtt.id, targetAtt.name, Date(), dateStr)
@@ -380,7 +380,7 @@ fun GeoTrackApp() {
                             val existing = userStamps[closest.id]
                             Toast.makeText(context, "您在 ${existing?.dateString} 已經蓋過【${closest.name}】的章囉！", Toast.LENGTH_SHORT).show()
                         } else {
-                            val currentUserId = auth.currentUser?.uid ?: "usr_hermann_01"
+                            val currentUserId = auth.currentUser?.uid ?: "usr_test_01"
                             val sdf = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault())
                             val dateStr = sdf.format(Date())
                             val newRecord = UserStampRecord(closest.id, closest.name, Date(), dateStr)
@@ -1475,19 +1475,26 @@ fun GeoTrackApp() {
                                                 }
                                             }
                                             Spacer(modifier = Modifier.width(10.dp))
-                                            Column {
-                                                Text(
-                                                    text = "雙北百景集章",
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 16.sp,
-                                                    color = Color(0xFF1D1B20)
-                                                )
-                                                Text(
-                                                    text = userEmail,
-                                                    fontSize = 11.sp,
-                                                    color = Color(0xFF79747E)
-                                                )
-                                            }
+                                            Text(
+                                                text = "雙北百景集章",
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 16.sp,
+                                                color = Color(0xFF1D1B20)
+                                            )
+                                        }
+
+                                        Surface(
+                                            shape = RoundedCornerShape(12.dp),
+                                            color = Color(0xFFEADDFF),
+                                            border = BorderStroke(1.dp, Color(0xFFD0BCFF))
+                                        ) {
+                                            Text(
+                                                text = userEmail.substringBefore("@"),
+                                                color = Color(0xFF6750A4),
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 11.sp,
+                                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            )
                                         }
                                     }
 

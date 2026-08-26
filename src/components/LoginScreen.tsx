@@ -9,13 +9,13 @@ interface Props {
 }
 
 export const LoginScreen: React.FC<Props> = ({ onLoginSuccess, showToast }) => {
-  const [email, setEmail] = useState('hermanntalk@gmail.com');
+  const [email, setEmail] = useState('test@gmail.com');
   const [password, setPassword] = useState('password123');
   const [isLoading, setIsLoading] = useState(false);
 
   const demoAccounts = [
-    { email: 'hermanntalk@gmail.com', role: 'Inspector (Taipei Records)' },
-    { email: 'field_agent_01@company.com', role: 'Field Agent (Tokyo Route)' },
+    { email: 'test@gmail.com', role: 'Test User' },
+    { email: 'field_agent_01@company.com', role: 'Field Agent' },
     { email: 'supervisor@company.com', role: 'HQ Supervisor' }
   ];
 

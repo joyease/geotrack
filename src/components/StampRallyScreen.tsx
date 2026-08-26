@@ -251,6 +251,9 @@ export const StampRallyScreen: React.FC<Props> = ({
                 </h2>
               </div>
             </div>
+            <span className="px-3 py-1 rounded-full text-xs font-mono bg-[#EADDFF] text-[#6750A4] font-semibold border border-[#D0BCFF]">
+              {currentUser.email.split('@')[0]}
+            </span>
           </div>
 
           {/* Metrics Row: 蓋章區塊覆蓋到原本「蓋章門檻 現場半徑200M」位置 */}

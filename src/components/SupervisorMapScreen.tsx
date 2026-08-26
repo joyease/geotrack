@@ -20,11 +20,11 @@ interface Props {
 }
 
 export const SupervisorMapScreen: React.FC<Props> = ({
-  initialEmail = 'hermanntalk@gmail.com',
+  initialEmail = 'test@gmail.com',
   initialTripCode = 'TAIPEI',
   showToast
 }) => {
-  const [searchEmail, setSearchEmail] = useState(initialEmail || 'hermanntalk@gmail.com');
+  const [searchEmail, setSearchEmail] = useState(initialEmail || 'test@gmail.com');
   const [searchTripCode, setSearchTripCode] = useState(initialTripCode || 'TAIPEI');
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);

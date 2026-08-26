@@ -17,86 +17,8 @@ const STORAGE_CHECKINS_KEY = 'geocheckin_firestore_checkins';
 const STORAGE_USER_KEY = 'geocheckin_firebase_auth_user';
 const STORAGE_STAMPS_KEY_PREFIX = 'geocheckin_user_stamps_';
 
-// Pre-seeded high quality check-in records for immediate supervisor demoing
-const SEED_CHECKINS: CheckInRecord[] = [
-  {
-    id: 'chk_seed_101',
-    userId: 'usr_hermann_01',
-    userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'TAIPEI',
-    location: { latitude: 25.033964, longitude: 121.564468 }, // Taipei 101
-    timestamp: new Date(Date.now() - 3600 * 1000 * 6.5).toISOString(),
-    accuracy: 4.2,
-    addressHint: 'Taipei 101 Tower Base, Xinyi District',
-    deviceModel: 'Pixel 8 Pro (Android 15)'
-  },
-  {
-    id: 'chk_seed_102',
-    userId: 'usr_hermann_01',
-    userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'TAIPEI',
-    location: { latitude: 25.0385, longitude: 121.5583 }, // Sun Yat-sen Memorial Hall
-    timestamp: new Date(Date.now() - 3600 * 1000 * 5.2).toISOString(),
-    accuracy: 3.8,
-    addressHint: 'SYS Memorial Hall, Renai Road',
-    deviceModel: 'Pixel 8 Pro (Android 15)'
-  },
-  {
-    id: 'chk_seed_103',
-    userId: 'usr_hermann_01',
-    userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'TAIPEI',
-    location: { latitude: 25.0418, longitude: 121.5353 }, // Huashan 1914 Park
-    timestamp: new Date(Date.now() - 3600 * 1000 * 4.1).toISOString(),
-    accuracy: 5.1,
-    addressHint: 'Huashan 1914 Creative Park, Zhongzheng',
-    deviceModel: 'Pixel 8 Pro (Android 15)'
-  },
-  {
-    id: 'chk_seed_104',
-    userId: 'usr_hermann_01',
-    userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'TAIPEI',
-    location: { latitude: 25.0478, longitude: 121.5170 }, // Taipei Main Station
-    timestamp: new Date(Date.now() - 3600 * 1000 * 3.0).toISOString(),
-    accuracy: 4.0,
-    addressHint: 'Taipei Main Station Station Front',
-    deviceModel: 'Pixel 8 Pro (Android 15)'
-  },
-  {
-    id: 'chk_seed_105',
-    userId: 'usr_hermann_01',
-    userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'TAIPEI',
-    location: { latitude: 25.0422, longitude: 121.5080 }, // Ximending
-    timestamp: new Date(Date.now() - 3600 * 1000 * 2.1).toISOString(),
-    accuracy: 3.5,
-    addressHint: 'Ximending Walking Street',
-    deviceModel: 'Pixel 8 Pro (Android 15)'
-  },
-  {
-    id: 'chk_seed_106',
-    userId: 'usr_hermann_01',
-    userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'TAIPEI',
-    location: { latitude: 25.0353, longitude: 121.5197 }, // Chiang Kai-shek Memorial Hall
-    timestamp: new Date(Date.now() - 3600 * 1000 * 1.2).toISOString(),
-    accuracy: 3.9,
-    addressHint: 'Chiang Kai-shek Memorial Hall Square',
-    deviceModel: 'Pixel 8 Pro (Android 15)'
-  },
-  {
-    id: 'chk_seed_107',
-    userId: 'usr_hermann_01',
-    userEmail: 'hermanntalk@gmail.com',
-    tripCode: 'TAIPEI',
-    location: { latitude: 25.0330, longitude: 121.5320 }, // Daan Forest Park
-    timestamp: new Date(Date.now() - 3600 * 1000 * 0.4).toISOString(),
-    accuracy: 3.2,
-    addressHint: 'Daan Forest Park Metro Station',
-    deviceModel: 'Pixel 8 Pro (Android 15)'
-  }
-];
+// Pre-seeded records are empty by default so new accounts start clean
+const SEED_CHECKINS: CheckInRecord[] = [];
 
 export const StorageService = {
   // Authentication methods
@@ -108,9 +30,9 @@ export const StorageService = {
       // ignore
     }
     const defaultUser: AuthUser = {
-      uid: 'usr_hermann_01',
-      email: 'hermanntalk@gmail.com',
-      displayName: 'Hermann'
+      uid: 'usr_test_01',
+      email: 'test@gmail.com',
+      displayName: 'Test User'
     };
     this.setCurrentUser(defaultUser);
     return defaultUser;
