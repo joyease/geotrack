@@ -1007,8 +1007,7 @@ fun GeoTrackApp() {
                             }
                         }
 
-                        // Map Viewport (Takes all remaining screen height)
-                        // 地圖視圖區域（已修正高度 100%、CSP 放行、CartoDB 免 Key 圖資、多重延遲重繪）
+// 地圖視圖區域（已修正高度 100%、CSP 放行、CartoDB 免 Key 圖資、多重延遲重繪）
                         Box(
                             modifier = Modifier
                                 .weight(1f)
@@ -1021,10 +1020,10 @@ fun GeoTrackApp() {
 
                             val markersJs = searchResults.mapIndexedNotNull { idx, r ->
                                 r.location?.let { loc ->
-                                    val title = r.locationName ?: "打卡點 #${idx + 1}"
-                                    val time = r.checkInTime ?: ""
-                                    val user = r.userEmail ?: ""
-                                    val trip = r.tripCode ?: ""
+                                    val title = if (r.addressHint.isNotBlank()) r.addressHint.replace("'", "\\'") else "打卡點 #${idx + 1}"
+                                    val time = r.timestamp?.let { SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(it) } ?: ""
+                                    val user = r.userEmail.replace("'", "\\'")
+                                    val trip = r.tripCode.replace("'", "\\'")
                                     val color = if (idx == 0) "#10B981" else if (idx == searchResults.size - 1) "#EF4444" else "#6366F1"
                                     """
                                     (function() {
@@ -1166,7 +1165,6 @@ fun GeoTrackApp() {
                                     webView.loadDataWithBaseURL("https://localhost/", htmlContent, "text/html", "UTF-8", null)
                                 }
                             )
-                        }
 
                             // Floating Map Controls (Top-Right)
                             Column(
@@ -1216,14 +1214,14 @@ fun GeoTrackApp() {
                                         .clickable {
                                             webViewRef.value?.evaluateJavascript("recenterMap();", null) ?: searchFirestoreRecords()
                                         }
-                                ) {
+                                Juice) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(Icons.Default.Refresh, contentDescription = "重新置中", tint = Color(0xFF6750A4), modifier = Modifier.size(18.dp))
                                     }
                                 }
                             }
 
-                            // Floating Bottom-Right Trip & Count Badge (完全對應 Web: (INSPECT-0824-A) 2 筆)
+                            // Floating Bottom-Right Trip & Count Badge
                             Surface(
                                 shape = RoundedCornerShape(12.dp),
                                 color = Color.White.copy(alpha = 0.95f),
