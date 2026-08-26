@@ -651,6 +651,9 @@ fun GeoTrackApp() {
                     onClick = {
                         selectedTab = 1
                         if (searchResults.isEmpty()) searchFirestoreRecords()
+                        webViewRef.value?.postDelayed({
+                            webViewRef.value?.evaluateJavascript("if (typeof map !== 'undefined' && map) { map.invalidateSize(); }", null)
+                        }, 250)
                     },
                     icon = { Icon(Icons.Default.Map, contentDescription = "打卡地圖") },
                     label = { Text("打卡地圖") }
@@ -1012,8 +1015,8 @@ fun GeoTrackApp() {
                                 .background(Color.Gray)
                         ) {
                             val validCoords = searchResults.mapNotNull { it.location }
-                            val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else if (currentLatitude != 0.0) currentLatitude else 25.0339
-                            val centerLng = if (validCoords.isNotEmpty()) validCoords.first().longitude else if (currentLongitude != 0.0) currentLongitude else 121.5644
+                            val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else if (currentLatitude != 0.0) currentLatitude else 25.0330
+                            val centerLng = if (validCoords.isNotEmpty()) validCoords.first().longitude else if (currentLongitude != 0.0) currentLongitude else 121.5654
 
                             val markersJs = searchResults.mapIndexedNotNull { idx, r ->
                                 r.location?.let { loc ->
@@ -1050,7 +1053,7 @@ fun GeoTrackApp() {
                             } else if (validCoords.size == 1) {
                                 "map.setView([${validCoords[0].latitude}, ${validCoords[0].longitude}], 15);"
                             } else {
-                                "L.marker([$centerLat, $centerLng]).addTo(map).bindPopup('<b>預設中心點 (台北)</b><br/>$centerLat, $centerLng').openPopup(); map.setView([$centerLat, $centerLng], 14);"
+                                "L.marker([25.0330, 121.5654]).addTo(map).bindPopup('<b>預設坐標 (台北)</b><br/>25.0330, 121.5654').openPopup(); map.setView([25.0330, 121.5654], 13);"
                             }
 
                             val htmlContent = """
@@ -1059,13 +1062,14 @@ fun GeoTrackApp() {
                                 <head>
                                     <meta charset="utf-8">
                                     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+                                    <meta http-equiv="Content-Security-Policy" content="default-src * 'unsafe-inline' 'unsafe-eval'; img-src * data: blob: https: http:; style-src * 'unsafe-inline'; font-src * data:; script-src * 'unsafe-inline' 'unsafe-eval';" />
                                     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css" />
                                     <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
                                     <style>
                                         * { margin: 0; padding: 0; box-sizing: border-box; }
-                                        html, body { width: 100vw; height: 100vh; overflow: hidden; background-color: #e5e3df; margin: 0; padding: 0; }
-                                        #map { width: 100vw; height: 100vh; position: absolute; top: 0; left: 0; }
-                                        .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+                                        html, body { width: 100%; height: 100%; min-height: 100%; overflow: hidden; background-color: #e5e3df; margin: 0; padding: 0; display: flex; flex-direction: column; }
+                                        #map { width: 100%; height: 100%; min-height: 400px; flex: 1; position: absolute; top: 0; left: 0; right: 0; bottom: 0; }
+                                        .leaflet-container { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; width: 100%; height: 100%; }
                                     </style>
                                 </head>
                                 <body>
@@ -1095,7 +1099,7 @@ fun GeoTrackApp() {
                                         function recenterMap() {
                                             if (!map) return;
                                             map.invalidateSize();
-                                            map.setView([$centerLat, $centerLng], 14);
+                                            map.setView([$centerLat, $centerLng], 13);
                                         }
 
                                         window.onload = function() {
@@ -1103,7 +1107,7 @@ fun GeoTrackApp() {
                                                 map = L.map('map', {
                                                     zoomControl: true,
                                                     attributionControl: false
-                                                }).setView([$centerLat, $centerLng], 14);
+                                                }).setView([$centerLat, $centerLng], 13);
 
                                                 window.currentMap = map;
 
@@ -1112,9 +1116,10 @@ fun GeoTrackApp() {
                                                 $markersJs
                                                 $polylineJs
 
-                                                // 強制在 200ms 與 600ms 重刷尺寸，徹底解決 Android 渲染延遲
-                                                setTimeout(function() { if (map) map.invalidateSize(); }, 200);
-                                                setTimeout(function() { if (map) map.invalidateSize(); }, 600);
+                                                // 強制在多個時間點重刷尺寸，徹底解決 Android 渲染延遲
+                                                setTimeout(function() { if (map) map.invalidateSize(); }, 150);
+                                                setTimeout(function() { if (map) map.invalidateSize(); }, 400);
+                                                setTimeout(function() { if (map) map.invalidateSize(); }, 800);
                                             } catch (e) {
                                                 console.error("Leaflet Error:", e);
                                                 document.body.innerHTML = '<h3 style="color:red;padding:20px;font-family:sans-serif;">地圖載入異常: ' + e.message + '</h3>';
