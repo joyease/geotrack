@@ -1154,12 +1154,12 @@ fun GeoTrackApp() {
                             }
                         }
 
-// 地圖視圖區域（已修正高度 100%、CSP 放行、CartoDB 免 Key 圖資、多重延遲重繪）
+// 地圖視圖區域（採用 100% 免 API Key 的穩定 Leaflet + OpenStreetMap 圖資）
                         Box(
                             modifier = Modifier
                                 .weight(1f)
                                 .fillMaxWidth()
-                                .background(Color.Gray)
+                                .background(Color(0xFFE5E3DF))
                         ) {
                             val validCoords = searchResults.mapNotNull { it.location }
                             val centerLat = if (validCoords.isNotEmpty()) validCoords.first().latitude else if (currentLatitude != 0.0) currentLatitude else 25.0330
@@ -1222,8 +1222,8 @@ fun GeoTrackApp() {
                                         var map = null;
                                         var currentLayer = null;
                                         var tileUrls = {
+                                            osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                                             clean: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-                                            osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
                                             sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
                                         };
 
@@ -1232,11 +1232,10 @@ fun GeoTrackApp() {
                                             if (currentLayer) {
                                                 map.removeLayer(currentLayer);
                                             }
-                                            var url = tileUrls[type] || tileUrls.clean;
+                                            var url = tileUrls[type] || tileUrls.osm;
                                             currentLayer = L.tileLayer(url, {
                                                 maxZoom: 19,
-                                                subdomains: 'abcd',
-                                                attribution: '&copy; CARTO &copy; OpenStreetMap'
+                                                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a> contributors'
                                             }).addTo(map);
                                         }
 

@@ -29,7 +29,7 @@ export const SupervisorMapScreen: React.FC<Props> = ({
   const [searchError, setSearchError] = useState<string | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [matchedRecords, setMatchedRecords] = useState<CheckInRecord[]>([]);
-  const [tileLayerType, setTileLayerType] = useState<'osm' | 'clean' | 'satellite'>('clean');
+  const [tileLayerType, setTileLayerType] = useState<'osm' | 'clean' | 'satellite'>('osm');
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -43,12 +43,12 @@ export const SupervisorMapScreen: React.FC<Props> = ({
     if (initialTripCode) setSearchTripCode(initialTripCode);
   }, [initialEmail, initialTripCode]);
 
-  // Initialize Leaflet Map
+  // Initialize Leaflet Map with stable OpenStreetMap
   useEffect(() => {
     if (!mapContainerRef.current) return;
     if (mapInstanceRef.current) return; // already initialized
 
-    // Default center on Taipei / LA
+    // Default center on Taipei
     const map = L.map(mapContainerRef.current, {
       center: [25.033964, 121.564468],
       zoom: 13,
@@ -57,18 +57,13 @@ export const SupervisorMapScreen: React.FC<Props> = ({
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    const tileUrls = {
-      osm: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      clean: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-      satellite: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
-    };
-
-    const tileLayer = L.tileLayer(tileUrls.clean, {
+    // Standard OpenStreetMap Tile Server - 100% Free, No API Key Required
+    const osmTileLayer = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
-      attribution: '&copy; OpenStreetMap contributors & CARTO'
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
     }).addTo(map);
 
-    currentTileLayerRef.current = tileLayer;
+    currentTileLayerRef.current = osmTileLayer;
 
     const markersGroup = L.layerGroup().addTo(map);
     const polylineGroup = L.layerGroup().addTo(map);
@@ -110,12 +105,12 @@ export const SupervisorMapScreen: React.FC<Props> = ({
 
     const tileUrls = {
       osm: {
-        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        attr: '&copy; OpenStreetMap'
+        url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attr: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
       },
       clean: {
         url: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        attr: '&copy; CARTO Voyager'
+        attr: '&copy; OpenStreetMap contributors & CARTO'
       },
       satellite: {
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -395,18 +390,6 @@ export const SupervisorMapScreen: React.FC<Props> = ({
           {/* Layer switcher */}
           <div className="bg-white/95 backdrop-blur-md border border-[#E7E0EC] rounded-xl p-1 shadow-md flex flex-col gap-1">
             <button
-              onClick={() => setTileLayerType('clean')}
-              className={`p-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
-                tileLayerType === 'clean'
-                  ? 'bg-[#6750A4] text-white font-bold'
-                  : 'text-[#49454F] hover:bg-[#F7F2FA]'
-              }`}
-              title="Carto Clean"
-            >
-              <Layers className="w-3.5 h-3.5" />
-              <span className="text-[10px] hidden sm:inline">Clean</span>
-            </button>
-            <button
               onClick={() => setTileLayerType('osm')}
               className={`p-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
                 tileLayerType === 'osm'
@@ -417,6 +400,18 @@ export const SupervisorMapScreen: React.FC<Props> = ({
             >
               <Layers className="w-3.5 h-3.5" />
               <span className="text-[10px] hidden sm:inline">OSM</span>
+            </button>
+            <button
+              onClick={() => setTileLayerType('clean')}
+              className={`p-1.5 rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
+                tileLayerType === 'clean'
+                  ? 'bg-[#6750A4] text-white font-bold'
+                  : 'text-[#49454F] hover:bg-[#F7F2FA]'
+              }`}
+              title="Carto Clean"
+            >
+              <Layers className="w-3.5 h-3.5" />
+              <span className="text-[10px] hidden sm:inline">Clean</span>
             </button>
             <button
               onClick={() => setTileLayerType('satellite')}
