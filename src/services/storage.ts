@@ -43,6 +43,18 @@ export const StorageService = {
   setCurrentUser(user: AuthUser | null): void {
     if (user) {
       localStorage.setItem(STORAGE_USER_KEY, JSON.stringify(user));
+      // 同步使用者帳號至 Firestore users 集合
+      try {
+        const userDocRef = doc(db, 'users', user.uid);
+        setDoc(userDocRef, {
+          email: user.email,
+          displayName: user.displayName,
+          userId: user.uid,
+          lastLoginAt: serverTimestamp()
+        }, { merge: true }).catch(err => console.warn('User doc sync fallback:', err));
+      } catch (e) {
+        // ignore
+      }
     } else {
       localStorage.removeItem(STORAGE_USER_KEY);
     }
@@ -240,16 +252,40 @@ export const StorageService = {
       localStorage.setItem(key, JSON.stringify(updated));
     }
 
-    // Persist to Cloud Firestore: users/{userId}/stamps/{attractionId}
+    // Persist to Cloud Firestore: users/{userId}/stamps/{attractionId} and global stamps
     try {
       const currentAuth = auth.currentUser;
       const targetUserId = currentAuth?.uid || userId;
+      const userEmail = currentAuth?.email || '';
+
+      // 1. 更新使用者個人文件
+      const userDocRef = doc(db, 'users', targetUserId);
+      await setDoc(userDocRef, {
+        email: userEmail,
+        userId: targetUserId,
+        lastActiveAt: serverTimestamp()
+      }, { merge: true });
+
+      // 2. 寫入使用者專屬百景集章子集合 (users/{userId}/stamps/{attractionId})
       const stampDocRef = doc(db, 'users', targetUserId, 'stamps', stamp.attractionId.toString());
       await setDoc(stampDocRef, {
         attractionId: stamp.attractionId,
         name: stamp.name,
+        userId: targetUserId,
+        userEmail: userEmail,
         stampedAt: serverTimestamp()
       }, { merge: true });
+
+      // 3. 同步至全域 stamps 集合（相容舊版與總後台查詢）
+      const globalStampDocRef = doc(db, 'stamps', stamp.attractionId.toString());
+      await setDoc(globalStampDocRef, {
+        attractionId: stamp.attractionId,
+        name: stamp.name,
+        lastUserId: targetUserId,
+        lastUserEmail: userEmail,
+        lastStampedAt: serverTimestamp()
+      }, { merge: true });
+
       console.log(`✅ Stamp saved to Firestore: users/${targetUserId}/stamps/${stamp.attractionId}`);
     } catch (err) {
       console.warn('Firestore stamp save fallback:', err);

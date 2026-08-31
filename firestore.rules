@@ -13,10 +13,22 @@ service cloud.firestore {
       allow update, delete: if request.auth != null && (resource.data.userId == request.auth.uid || resource.data.userEmail == request.auth.token.email);
     }
 
-    // 百景集章紀錄：用戶只能在自己的路徑寫入
+    // 使用者基本資料（包含 Email、更新時間）
+    match /users/{userId} {
+      allow read: if true;
+      allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 百景集章紀錄：用戶專屬子路徑
     match /users/{userId}/stamps/{stampId} {
       allow read: if true;
       allow write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    // 全域百景集合（相容舊版與全域日誌）
+    match /stamps/{stampId} {
+      allow read: if true;
+      allow write: if request.auth != null;
     }
   }
 }

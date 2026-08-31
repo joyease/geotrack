@@ -382,14 +382,30 @@ fun GeoTrackApp(
                             val dateStr = sdf.format(Date())
                             val newRecord = UserStampRecord(closest.id, closest.name, Date(), dateStr)
 
+                            val emailStr = auth.currentUser?.email ?: ""
                             val stampData = hashMapOf(
                                 "attractionId" to closest.id,
                                 "name" to closest.name,
+                                "userId" to currentUserId,
+                                "userEmail" to emailStr,
                                 "stampedAt" to FieldValue.serverTimestamp()
                             )
+                            // 1. 寫入個人集章子集合
                             firestore.collection("users").document(currentUserId).collection("stamps")
                                 .document(closest.id.toString())
                                 .set(stampData)
+                            // 2. 更新使用者個人主文件
+                            firestore.collection("users").document(currentUserId)
+                                .set(mapOf("email" to emailStr, "userId" to currentUserId, "lastActiveAt" to FieldValue.serverTimestamp()), com.google.firebase.firestore.SetOptions.merge())
+                            // 3. 同步至全域 stamps 集合
+                            firestore.collection("stamps").document(closest.id.toString())
+                                .set(mapOf(
+                                    "attractionId" to closest.id,
+                                    "name" to closest.name,
+                                    "lastUserId" to currentUserId,
+                                    "lastUserEmail" to emailStr,
+                                    "lastStampedAt" to FieldValue.serverTimestamp()
+                                ), com.google.firebase.firestore.SetOptions.merge())
                                 .addOnSuccessListener {
                                     userStamps = userStamps + (closest.id to newRecord)
                                     stampCelebrationTarget = closest
@@ -717,8 +733,16 @@ fun GeoTrackApp(
                                         userEmail = user.email ?: cleanEmail
                                         mapQueryEmail = userEmail
                                         isLoggedIn = true
+                                        // 同步使用者主文件
+                                        firestore.collection("users").document(user.uid)
+                                            .set(mapOf(
+                                                "email" to userEmail,
+                                                "userId" to user.uid,
+                                                "lastLoginAt" to FieldValue.serverTimestamp()
+                                            ), com.google.firebase.firestore.SetOptions.merge())
                                         Toast.makeText(context, "✅ Firebase 認證成功！歡迎 ${user.email}", Toast.LENGTH_SHORT).show()
                                         loadRecentCheckIns()
+                                        loadUserStamps()
                                     }
                                 }
                                 .addOnFailureListener { ex ->
