@@ -105,7 +105,7 @@ class MainActivity : ComponentActivity() {
             try {
                 val options = FirebaseOptions.Builder()
                     .setApplicationId("1:133122521568:android:51d7db5ef2979686995385")
-                    .setApiKey("AIzaSyBagcQG_7QSBvf0lSdYPmD4vH1VrOeToJY")
+                    .setApiKey("AIzaSyAETkn9tIEVifMr2_r6oAmW8Sg11eMs_Is")
                     .setProjectId("geotrack-8e9b4")
                     .setStorageBucket("geotrack-8e9b4.firebasestorage.app")
                     .build()
