@@ -53,6 +53,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -135,7 +139,9 @@ fun GeoTrackApp() {
     var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
     var loginEmailInput by remember { mutableStateOf(auth.currentUser?.email ?: "test@gmail.com") }
     var loginPasswordInput by remember { mutableStateOf("password123") }
+    var passwordVisible by remember { mutableStateOf(false) }
     var isAuthenticating by remember { mutableStateOf(false) }
+    var loginErrorDetail by remember { mutableStateOf<String?>(null) }
 
     var selectedTab by remember { mutableIntStateOf(0) }
     var userEmail by remember { mutableStateOf(auth.currentUser?.email ?: "test@gmail.com") }
@@ -619,9 +625,13 @@ fun GeoTrackApp() {
                 ) {
                     OutlinedTextField(
                         value = loginEmailInput,
-                        onValueChange = { loginEmailInput = it },
+                        onValueChange = { 
+                            loginEmailInput = it
+                            if (loginErrorDetail != null) loginErrorDetail = null
+                        },
                         label = { Text("Firebase Email 帳號") },
                         leadingIcon = { Icon(Icons.Default.Email, contentDescription = null) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
@@ -629,31 +639,70 @@ fun GeoTrackApp() {
 
                     OutlinedTextField(
                         value = loginPasswordInput,
-                        onValueChange = { loginPasswordInput = it },
+                        onValueChange = { 
+                            loginPasswordInput = it
+                            if (loginErrorDetail != null) loginErrorDetail = null
+                        },
                         label = { Text("Firebase 密碼 (至少6位)") },
                         leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null) },
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (passwordVisible) "隱藏密碼" else "顯示密碼"
+                                )
+                            }
+                        },
+                        visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp)
                     )
+
+                    if (loginErrorDetail != null) {
+                        Surface(
+                            color = Color(0xFFF9DEDC),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.Top,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(Icons.Default.Error, contentDescription = null, tint = Color(0xFFB3261E), modifier = Modifier.size(18.dp))
+                                Text(
+                                    text = loginErrorDetail ?: "",
+                                    fontSize = 12.sp,
+                                    color = Color(0xFF601410),
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
 
                     Button(
                         onClick = {
                             val cleanEmail = loginEmailInput.trim()
                             val cleanPass = loginPasswordInput.trim()
                             if (cleanEmail.isBlank() || cleanPass.isBlank()) {
+                                loginErrorDetail = "請輸入完整的 Email 與密碼"
                                 Toast.makeText(context, "請輸入完整的 Email 與密碼", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
                             if (cleanPass.length < 6) {
+                                loginErrorDetail = "密碼長度至少需 6 個字元"
                                 Toast.makeText(context, "密碼長度至少需 6 個字元", Toast.LENGTH_SHORT).show()
                                 return@Button
                             }
 
                             isAuthenticating = true
+                            loginErrorDetail = null
                             auth.signInWithEmailAndPassword(cleanEmail, cleanPass)
                                 .addOnSuccessListener { result ->
                                     isAuthenticating = false
+                                    loginErrorDetail = null
                                     val user = result.user
                                     if (user != null) {
                                         userEmail = user.email ?: cleanEmail
@@ -665,7 +714,19 @@ fun GeoTrackApp() {
                                 }
                                 .addOnFailureListener { ex ->
                                     isAuthenticating = false
-                                    Toast.makeText(context, "❌ Firebase 驗證失敗: ${ex.localizedMessage ?: "帳號或密碼錯誤"}", Toast.LENGTH_LONG).show()
+                                    val msg = ex.localizedMessage ?: ex.message ?: "未知錯誤"
+                                    val friendlyMsg = when {
+                                        msg.contains("API key not valid", ignoreCase = true) || msg.contains("UNAUTHORIZED", ignoreCase = true) || msg.contains("app-not-authorized", ignoreCase = true) ->
+                                            "Firebase API Key 限制錯誤：請至 Firebase Console / Google Cloud 檢查 Android API Key 限制，或在專案中新增 SHA-1 憑證指紋。"
+                                        msg.contains("network", ignoreCase = true) || msg.contains("timeout", ignoreCase = true) ->
+                                            "網路連線失敗，請檢查手機是否已連線至 Wi-Fi 或行動網路。"
+                                        msg.contains("user-not-found", ignoreCase = true) || msg.contains("wrong-password", ignoreCase = true) || msg.contains("invalid-credential", ignoreCase = true) ->
+                                            "帳號或密碼不正確。請確認已在 Firebase Console 後台建立此帳號與密碼。"
+                                        else ->
+                                            "驗證失敗: $msg"
+                                    }
+                                    loginErrorDetail = friendlyMsg
+                                    Toast.makeText(context, "❌ $friendlyMsg", Toast.LENGTH_LONG).show()
                                 }
                         },
                         enabled = !isAuthenticating,
@@ -1223,7 +1284,7 @@ fun GeoTrackApp() {
                                         var currentLayer = null;
                                         var tileUrls = {
                                             osm: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                                            clean: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
+                                            clean: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
                                             sat: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
                                         };
 

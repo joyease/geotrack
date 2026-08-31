@@ -109,8 +109,8 @@ export const SupervisorMapScreen: React.FC<Props> = ({
         attr: '&copy; <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noreferrer">OpenStreetMap</a> contributors'
       },
       clean: {
-        url: 'https://a.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}.png',
-        attr: '&copy; OpenStreetMap contributors & CARTO'
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}',
+        attr: '&copy; Esri World Street Map'
       },
       satellite: {
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
@@ -408,7 +408,7 @@ export const SupervisorMapScreen: React.FC<Props> = ({
                   ? 'bg-[#6750A4] text-white font-bold'
                   : 'text-[#49454F] hover:bg-[#F7F2FA]'
               }`}
-              title="Carto Clean"
+              title="Esri Clean Street"
             >
               <Layers className="w-3.5 h-3.5" />
               <span className="text-[10px] hidden sm:inline">Clean</span>

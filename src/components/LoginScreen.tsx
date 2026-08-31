@@ -22,7 +22,11 @@ export const LoginScreen: React.FC<Props> = ({ onLoginSuccess, showToast }) => {
       case 'auth/invalid-credential':
       case 'auth/user-not-found':
       case 'auth/wrong-password':
-        return 'Firebase 驗證失敗：帳號或密碼不正確。請使用管理員在 Firebase 後台已開通的帳號登入。';
+        return 'Firebase 驗證失敗：帳號或密碼不正確。請確認已在 Firebase Console 後台建立此帳號與密碼。';
+      case 'auth/operation-not-allowed':
+        return 'Firebase Authentication 尚未啟用「電子郵件/密碼」登入！請至 Firebase Console -> Authentication -> Sign-in method 將「Email/Password」啟用。';
+      case 'auth/unauthorized-domain':
+        return '目前網域未在 Firebase 的授權網域清單中，請至 Firebase Console -> Authentication -> Settings -> Authorized domains 加入此網域。';
       case 'auth/user-disabled':
         return '此 Firebase 帳號已被管理員停用。';
       case 'auth/weak-password':
