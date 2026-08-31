@@ -92,6 +92,9 @@ data class UserStampRecord(
 
 class MainActivity : ComponentActivity() {
 
+    private lateinit var auth: FirebaseAuth
+    private lateinit var firestore: FirebaseFirestore
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         try {
@@ -110,6 +113,9 @@ class MainActivity : ComponentActivity() {
             } catch (_: Exception) {}
         }
 
+        auth = FirebaseAuth.getInstance()
+        firestore = FirebaseFirestore.getInstance()
+
         setContent {
             MaterialTheme(
                 colorScheme = lightColorScheme(
@@ -121,7 +127,7 @@ class MainActivity : ComponentActivity() {
                     onSurface = Color(0xFF1D1B20)
                 )
             ) {
-                GeoTrackApp()
+                GeoTrackApp(auth = auth, firestore = firestore)
             }
         }
     }
@@ -129,10 +135,11 @@ class MainActivity : ComponentActivity() {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GeoTrackApp() {
+fun GeoTrackApp(
+    auth: FirebaseAuth,
+    firestore: FirebaseFirestore
+) {
     val context = LocalContext.current
-    val firestore = remember { FirebaseFirestore.getInstance() }
-    val auth = remember { FirebaseAuth.getInstance() }
     val fusedLocationClient = remember { LocationServices.getFusedLocationProviderClient(context) }
 
     // Authentication State
@@ -716,19 +723,11 @@ fun GeoTrackApp() {
                                 }
                                 .addOnFailureListener { ex ->
                                     isAuthenticating = false
-                                    val msg = ex.localizedMessage ?: ex.message ?: "未知錯誤"
-                                    val friendlyMsg = when {
-                                        msg.contains("network", ignoreCase = true) || msg.contains("timeout", ignoreCase = true) ->
-                                            "網路連線失敗，請檢查手機是否已連線至 Wi-Fi 或行動網路。"
-                                        msg.contains("user-not-found", ignoreCase = true) || msg.contains("wrong-password", ignoreCase = true) || msg.contains("invalid-credential", ignoreCase = true) ->
-                                            "帳號或密碼不正確。請確認已在 Firebase Console 後台建立此授權帳號。"
-                                        msg.contains("API key not valid", ignoreCase = true) || msg.contains("UNAUTHORIZED", ignoreCase = true) || msg.contains("app-not-authorized", ignoreCase = true) ->
-                                            "Firebase API Key 限制錯誤：請至 Google Cloud Credentials 將 API Key 限制設為「無限制 (None)」。"
-                                        else ->
-                                            "驗證失敗: $msg"
-                                    }
-                                    loginErrorDetail = friendlyMsg
-                                    Toast.makeText(context, "❌ $friendlyMsg", Toast.LENGTH_LONG).show()
+                                    // 關鍵：印出真正的底層 Exception 名稱與錯誤訊息
+                                    val rawMsg = ex.javaClass.simpleName + ": " + (ex.localizedMessage ?: ex.message)
+                                    Log.e("GeoTrackAuth", "登入失敗原因: ", ex)
+                                    loginErrorDetail = rawMsg
+                                    Toast.makeText(context, "❌ $rawMsg", Toast.LENGTH_LONG).show()
                                 }
                         },
                         enabled = !isAuthenticating,
