@@ -96,6 +96,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         try {
             if (FirebaseApp.getApps(this).isEmpty()) {
+                FirebaseApp.initializeApp(this)
+            }
+        } catch (e: Exception) {
+            try {
                 val options = FirebaseOptions.Builder()
                     .setApplicationId("1:133122521568:android:51d7db5ef2979686995385")
                     .setApiKey("AIzaSyBagcQG_7QSBvf0lSdYPmD4vH1VrOeToJY")
@@ -103,10 +107,6 @@ class MainActivity : ComponentActivity() {
                     .setStorageBucket("geotrack-8e9b4.firebasestorage.app")
                     .build()
                 FirebaseApp.initializeApp(this, options)
-            }
-        } catch (e: Exception) {
-            try {
-                FirebaseApp.initializeApp(this)
             } catch (_: Exception) {}
         }
 
@@ -137,6 +137,7 @@ fun GeoTrackApp() {
 
     // Authentication State
     var isLoggedIn by remember { mutableStateOf(auth.currentUser != null) }
+    var authModeIsRegister by remember { mutableStateOf(false) } // false = Login, true = Register
     var loginEmailInput by remember { mutableStateOf(auth.currentUser?.email ?: "test@gmail.com") }
     var loginPasswordInput by remember { mutableStateOf("password123") }
     var passwordVisible by remember { mutableStateOf(false) }
@@ -623,6 +624,57 @@ fun GeoTrackApp() {
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
+                    // Mode Toggle: 登入 / 註冊
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color(0xFFF3EDF7), RoundedCornerShape(10.dp))
+                            .padding(4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (!authModeIsRegister) Color(0xFF6750A4) else Color.Transparent,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    authModeIsRegister = false
+                                    loginErrorDetail = null
+                                }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "登入現有帳號",
+                                fontSize = 13.sp,
+                                fontWeight = if (!authModeIsRegister) FontWeight.Bold else FontWeight.Medium,
+                                color = if (!authModeIsRegister) Color.White else Color(0xFF49454F),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (authModeIsRegister) Color(0xFF6750A4) else Color.Transparent,
+                            modifier = Modifier
+                                .weight(1f)
+                                .clickable {
+                                    authModeIsRegister = true
+                                    loginErrorDetail = null
+                                }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                text = "註冊新帳號",
+                                fontSize = 13.sp,
+                                fontWeight = if (authModeIsRegister) FontWeight.Bold else FontWeight.Medium,
+                                color = if (authModeIsRegister) Color.White else Color(0xFF49454F),
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+
                     OutlinedTextField(
                         value = loginEmailInput,
                         onValueChange = { 
@@ -666,18 +718,33 @@ fun GeoTrackApp() {
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Row(
-                                modifier = Modifier.padding(12.dp),
-                                verticalAlignment = Alignment.Top,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Icon(Icons.Default.Error, contentDescription = null, tint = Color(0xFFB3261E), modifier = Modifier.size(18.dp))
-                                Text(
-                                    text = loginErrorDetail ?: "",
-                                    fontSize = 12.sp,
-                                    color = Color(0xFF601410),
-                                    lineHeight = 16.sp
-                                )
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.Top,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Error, contentDescription = null, tint = Color(0xFFB3261E), modifier = Modifier.size(18.dp))
+                                    Text(
+                                        text = loginErrorDetail ?: "",
+                                        fontSize = 12.sp,
+                                        color = Color(0xFF601410),
+                                        lineHeight = 16.sp
+                                    )
+                                }
+
+                                if (!authModeIsRegister && (loginErrorDetail?.contains("帳號或密碼不正確") == true || loginErrorDetail?.contains("user-not-found") == true)) {
+                                    OutlinedButton(
+                                        onClick = {
+                                            authModeIsRegister = true
+                                            loginErrorDetail = null
+                                        },
+                                        modifier = Modifier.fillMaxWidth().height(36.dp),
+                                        shape = RoundedCornerShape(8.dp),
+                                        colors = ButtonDefaults.outlinedButtonColors(contentColor = Color(0xFF6750A4))
+                                    ) {
+                                        Text("切換為【註冊新帳號】並建立", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
                             }
                         }
                     }
@@ -699,35 +766,72 @@ fun GeoTrackApp() {
 
                             isAuthenticating = true
                             loginErrorDetail = null
-                            auth.signInWithEmailAndPassword(cleanEmail, cleanPass)
-                                .addOnSuccessListener { result ->
-                                    isAuthenticating = false
-                                    loginErrorDetail = null
-                                    val user = result.user
-                                    if (user != null) {
-                                        userEmail = user.email ?: cleanEmail
-                                        mapQueryEmail = userEmail
-                                        isLoggedIn = true
-                                        Toast.makeText(context, "✅ Firebase 認證成功！歡迎 ${user.email}", Toast.LENGTH_SHORT).show()
-                                        loadRecentCheckIns()
+
+                            if (authModeIsRegister) {
+                                // 註冊新帳號
+                                auth.createUserWithEmailAndPassword(cleanEmail, cleanPass)
+                                    .addOnSuccessListener { result ->
+                                        isAuthenticating = false
+                                        loginErrorDetail = null
+                                        val user = result.user
+                                        if (user != null) {
+                                            userEmail = user.email ?: cleanEmail
+                                            mapQueryEmail = userEmail
+                                            isLoggedIn = true
+                                            Toast.makeText(context, "🎉 註冊並登入成功！歡迎 ${user.email}", Toast.LENGTH_SHORT).show()
+                                            loadRecentCheckIns()
+                                        }
                                     }
-                                }
-                                .addOnFailureListener { ex ->
-                                    isAuthenticating = false
-                                    val msg = ex.localizedMessage ?: ex.message ?: "未知錯誤"
-                                    val friendlyMsg = when {
-                                        msg.contains("API key not valid", ignoreCase = true) || msg.contains("UNAUTHORIZED", ignoreCase = true) || msg.contains("app-not-authorized", ignoreCase = true) ->
-                                            "Firebase API Key 限制錯誤：請至 Firebase Console / Google Cloud 檢查 Android API Key 限制，或在專案中新增 SHA-1 憑證指紋。"
-                                        msg.contains("network", ignoreCase = true) || msg.contains("timeout", ignoreCase = true) ->
-                                            "網路連線失敗，請檢查手機是否已連線至 Wi-Fi 或行動網路。"
-                                        msg.contains("user-not-found", ignoreCase = true) || msg.contains("wrong-password", ignoreCase = true) || msg.contains("invalid-credential", ignoreCase = true) ->
-                                            "帳號或密碼不正確。請確認已在 Firebase Console 後台建立此帳號與密碼。"
-                                        else ->
-                                            "驗證失敗: $msg"
+                                    .addOnFailureListener { ex ->
+                                        isAuthenticating = false
+                                        val msg = ex.localizedMessage ?: ex.message ?: "未知錯誤"
+                                        val friendlyMsg = when {
+                                            msg.contains("email-already-in-use", ignoreCase = true) ->
+                                                "此 Email 已被註冊過！請切換至【登入現有帳號】。"
+                                            msg.contains("invalid-email", ignoreCase = true) ->
+                                                "Email 格式不正確，請輸入合法的 Email 格式。"
+                                            msg.contains("weak-password", ignoreCase = true) ->
+                                                "密碼強度不足，請設定至少 6 位長度。"
+                                            msg.contains("API key not valid", ignoreCase = true) || msg.contains("UNAUTHORIZED", ignoreCase = true) || msg.contains("app-not-authorized", ignoreCase = true) ->
+                                                "Firebase API Key 權限錯誤：請確認 Google Cloud Credentials / Firebase Console 中的 API Key 設定。"
+                                            else ->
+                                                "註冊失敗: $msg"
+                                        }
+                                        loginErrorDetail = friendlyMsg
+                                        Toast.makeText(context, "❌ $friendlyMsg", Toast.LENGTH_LONG).show()
                                     }
-                                    loginErrorDetail = friendlyMsg
-                                    Toast.makeText(context, "❌ $friendlyMsg", Toast.LENGTH_LONG).show()
-                                }
+                            } else {
+                                // 登入現有帳號
+                                auth.signInWithEmailAndPassword(cleanEmail, cleanPass)
+                                    .addOnSuccessListener { result ->
+                                        isAuthenticating = false
+                                        loginErrorDetail = null
+                                        val user = result.user
+                                        if (user != null) {
+                                            userEmail = user.email ?: cleanEmail
+                                            mapQueryEmail = userEmail
+                                            isLoggedIn = true
+                                            Toast.makeText(context, "✅ Firebase 認證成功！歡迎 ${user.email}", Toast.LENGTH_SHORT).show()
+                                            loadRecentCheckIns()
+                                        }
+                                    }
+                                    .addOnFailureListener { ex ->
+                                        isAuthenticating = false
+                                        val msg = ex.localizedMessage ?: ex.message ?: "未知錯誤"
+                                        val friendlyMsg = when {
+                                            msg.contains("API key not valid", ignoreCase = true) || msg.contains("UNAUTHORIZED", ignoreCase = true) || msg.contains("app-not-authorized", ignoreCase = true) ->
+                                                "Firebase API Key 限制錯誤：請至 Firebase Console / Google Cloud 檢查 Android API Key 限制，或在專案中新增 SHA-1 憑證指紋。"
+                                            msg.contains("network", ignoreCase = true) || msg.contains("timeout", ignoreCase = true) ->
+                                                "網路連線失敗，請檢查手機是否已連線至 Wi-Fi 或行動網路。"
+                                            msg.contains("user-not-found", ignoreCase = true) || msg.contains("wrong-password", ignoreCase = true) || msg.contains("invalid-credential", ignoreCase = true) ->
+                                                "帳號或密碼不正確。若是首次使用請切換至上方【註冊新帳號】直接建立此帳號！"
+                                            else ->
+                                                "驗證失敗: $msg"
+                                        }
+                                        loginErrorDetail = friendlyMsg
+                                        Toast.makeText(context, "❌ $friendlyMsg", Toast.LENGTH_LONG).show()
+                                    }
+                            }
                         },
                         enabled = !isAuthenticating,
                         modifier = Modifier.fillMaxWidth().height(48.dp),
@@ -737,11 +841,11 @@ fun GeoTrackApp() {
                         if (isAuthenticating) {
                             CircularProgressIndicator(modifier = Modifier.size(20.dp), color = Color.White, strokeWidth = 2.dp)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("驗證登入中...", fontWeight = FontWeight.Bold)
+                            Text(if (authModeIsRegister) "註冊中..." else "驗證登入中...", fontWeight = FontWeight.Bold)
                         } else {
-                            Icon(Icons.Default.Login, contentDescription = null)
+                            Icon(if (authModeIsRegister) Icons.Default.PersonAdd else Icons.Default.Login, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("登入 MyTrackIn (Firebase 認證)", fontWeight = FontWeight.Bold)
+                            Text(if (authModeIsRegister) "立即註冊並登入" else "登入 MyTrackIn (Firebase 認證)", fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -749,7 +853,7 @@ fun GeoTrackApp() {
 
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "🔒 僅限管理者在 Firebase 後台開通設定之授權帳號登入使用。",
+                text = "🔒 支援 Firebase 雲端認證帳號登入與新用戶直接註冊開通。",
                 fontSize = 11.sp,
                 color = Color(0xFF79747E),
                 textAlign = TextAlign.Center,
