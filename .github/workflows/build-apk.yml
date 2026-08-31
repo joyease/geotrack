@@ -34,57 +34,12 @@ jobs:
       - name: 📄 Ensure google-services.json is configured
         run: |
           mkdir -p android/app
-          if [ -f android/app/google-services.json ]; then
+          if [ -f "android/app/google-services.json" ]; then
             echo "✅ Found android/app/google-services.json"
-          elif [ -f google-services.json ]; then
+          elif [ -f "google-services.json" ]; then
             echo "📋 Copying root google-services.json to android/app/google-services.json"
             cp google-services.json android/app/google-services.json
-          else
-            echo "⚠️ Creating android/app/google-services.json from template..."
-            cat << 'EOF' > android/app/google-services.json
-{
-  "project_info": {
-    "project_number": "133122521568",
-    "project_id": "geotrack-8e9b4",
-    "storage_bucket": "geotrack-8e9b4.firebasestorage.app"
-  },
-  "client": [
-    {
-      "client_info": {
-        "mobilesdk_app_id": "1:133122521568:android:51d7db5ef2979686995385",
-        "android_client_info": {
-          "package_name": "com.hh.geotrack"
-        }
-      },
-      "oauth_client": [
-        {
-          "client_id": "133122521568-vhu0j2bbcoktbqvb9d2f3dk9k44da6j5.apps.googleusercontent.com",
-          "client_type": 3
-        }
-      ],
-      "api_key": [
-        {
-          "current_key": "AIzaSyBagcQG_7QSBvf0lSdYPmD4vH1VrOeToJY"
-        }
-      ],
-      "services": {
-        "appinvite_service": {
-          "other_platform_oauth_client": [
-            {
-              "client_id": "133122521568-vhu0j2bbcoktbqvb9d2f3dk9k44da6j5.apps.googleusercontent.com",
-              "client_type": 3
-            }
-          ]
-        }
-      }
-    }
-  ],
-  "configuration_version": "1"
-}
-EOF
           fi
-          # Also ensure root has a copy
-          cp android/app/google-services.json ./google-services.json || true
           ls -la android/app/google-services.json
 
       - name: 📦 Build Android Debug APK
